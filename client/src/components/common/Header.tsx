@@ -123,6 +123,12 @@ export default function Header() {
             >
               Customer Service
             </Link>
+            <Link
+              to="/community"
+              className="whitespace-nowrap hover:text-white"
+            >
+              Become a Seller
+            </Link>
           </div>
         </nav>
       </header>

@@ -25,12 +25,11 @@ const productSchema = new mongoose.Schema(
       default: null, // for order-on-demand
     },
     images: [
-  {
-    url: { type: String, required: true },
-    public_id: { type: String, required: true },
-  }
-],
-
+      {
+        url: { type: String, required: true },
+        public_id: { type: String, required: true },
+      },
+    ],
     supplier: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supplier",
@@ -44,6 +43,35 @@ const productSchema = new mongoose.Schema(
         createdAt: { type: Date, default: Date.now },
       },
     ],
+    status: {
+      type: String,
+      enum: ["active", "inactive", "draft"],
+      default: "active",
+    },
+
+    // 🔥 Promotions
+    isFlashSale: { type: Boolean, default: false },
+    flashSaleEndDate: { type: Date },
+
+    isDealOfWeek: { type: Boolean, default: false },
+    dealEndDate: { type: Date },
+
+    isNewArrival: { type: Boolean, default: false },
+    newArrivalExpiry: { type: Date },
+
+    // 📦 Logistics Information
+    weight: { type: Number }, // in kg
+    dimensions: {
+      length: { type: Number }, // in cm
+      width: { type: Number },
+      height: { type: Number },
+    },
+    shippingRegions: [{ type: String }], // e.g. ["Kenya", "Uganda", "Tanzania"]
+    deliveryTime: { type: String }, // e.g. "2-5 business days"
+    freeShipping: { type: Boolean, default: false },
+    warehouseLocation: { type: String }, // e.g. "Nairobi, KE"
+    returnPolicy: { type: String }, // text describing policy
+    warranty: { type: String }, // optional warranty info
   },
   { timestamps: true }
 );

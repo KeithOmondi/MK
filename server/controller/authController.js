@@ -148,23 +148,21 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
 export const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
 
-  // 1. Validate input
+  // 1️⃣ Validate input
   if (!email || !password) {
-    return next(
-      new ErrorHandler(400, "Please provide both email and password.")
-    );
+    return next(new ErrorHandler(400, "Please provide both email and password."));
   }
 
-  // 2. Find user and ensure account is verified
-  const user = await User.findOne({ email, accountVerified: true }).select(
-    "+password +loginAttempts +lockUntil"
+  // 2️⃣ Find user and include necessary fields
+  const user = await User.findOne({ email }).select(
+    "+password +loginAttempts +lockUntil +forcePasswordChange"
   );
 
   if (!user) {
     return next(new ErrorHandler(401, "Invalid email or password."));
   }
 
-  // 3. Check if account is locked
+  // 3️⃣ Check if account is locked
   if (user.isLocked) {
     const unlockTime = Math.ceil((user.lockUntil - Date.now()) / 60000); // in minutes
     return next(
@@ -175,11 +173,10 @@ export const login = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // 4. Validate password
+  // 4️⃣ Validate password
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) {
     await user.incrementLoginAttempts();
-
     const attemptsLeft = Math.max(5 - user.loginAttempts, 0);
 
     return next(
@@ -192,13 +189,27 @@ export const login = catchAsyncErrors(async (req, res, next) => {
     );
   }
 
-  // 5. Reset login attempts on success
+  // 5️⃣ Reset login attempts on successful login
   await user.resetLoginAttempts();
 
-  // 6. Send authentication token
+  // 6️⃣ Check if user must change temporary password
+  if (user.forcePasswordChange) {
+    return res.status(200).json({
+      success: true,
+      message: "Login successful. You must change your temporary password.",
+      requiresPasswordChange: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  }
+
+  // 7️⃣ Send normal auth token if no forced password change
   return sendToken(user, 200, "Login successful", res);
 });
-
 
 
 export const logout = catchAsyncErrors(async (req, res, next) => {
@@ -344,4 +355,44 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
   //success: true,
   //message: "Password updated successfully.",
   //})
+});
+
+
+// -------------------------
+// Change Password (Supplier first login or general)
+// -------------------------
+export const changePassword = catchAsyncErrors(async (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+
+  // 1. Validate input
+  if (!currentPassword || !newPassword) {
+    return next(new ErrorHandler(400, "Please provide both current and new passwords."));
+  }
+
+  // 2. Find user (from logged-in session)
+  const user = await User.findById(req.user._id).select("+password +forcePasswordChange");
+
+  if (!user) {
+    return next(new ErrorHandler(404, "User not found."));
+  }
+
+  // 3. Verify current password
+  const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+  if (!isPasswordValid) {
+    return next(new ErrorHandler(401, "Current password is incorrect."));
+  }
+
+  // 4. Update password
+  const salt = await bcrypt.genSalt(10);
+  user.password = await bcrypt.hash(newPassword, salt);
+
+  // 5. Clear forcePasswordChange if it was set
+  if (user.forcePasswordChange) {
+    user.forcePasswordChange = false;
+  }
+
+  await user.save();
+
+  // 6. Send new auth token
+  sendToken(user, 200, "Password changed successfully", res);
 });

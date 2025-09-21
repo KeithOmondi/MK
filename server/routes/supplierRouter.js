@@ -14,28 +14,33 @@ import { upload } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-// ✅ Register supplier → Authenticated user (NOT admin-only)
+// -------------------------
+// Register Supplier
+// -------------------------
 router.post(
   "/register",
   isAuthenticated,
   upload.fields([
     { name: "idDocument", maxCount: 1 },
     { name: "businessLicense", maxCount: 1 },
+    { name: "passportPhoto", maxCount: 1 }, 
   ]),
   registerSupplier
 );
 
-// ✅ Get all suppliers → Admin only
+// -------------------------
+// Get Suppliers
+// -------------------------
 router.get("/get", isAuthenticated, isAuthorized("Admin"), getSuppliers);
-
-// ✅ Get single supplier → Public or Authenticated
 router.get("/get/:id", getSupplierById);
 
-// ✅ Update supplier → Supplier themselves or Admin
+// -------------------------
+// Update Supplier
+// -------------------------
+// Include file uploads in update route as well
 router.put(
   "/update/:id",
   isAuthenticated,
-  isAuthorized("Admin", "Supplier"),
   upload.fields([
     { name: "idDocument", maxCount: 1 },
     { name: "businessLicense", maxCount: 1 },
@@ -43,7 +48,9 @@ router.put(
   updateSupplier
 );
 
-// ✅ Delete supplier → Admin only
+// -------------------------
+// Delete Supplier
+// -------------------------
 router.delete(
   "/delete/:id",
   isAuthenticated,

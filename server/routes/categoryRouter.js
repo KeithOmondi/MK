@@ -14,15 +14,15 @@ const router = express.Router();
 router.post("/create", isAuthenticated, isAuthorized("Admin"), createCategory);
 
 // ✅ Get all categories → Public
-router.get("/", getCategories);
+router.get("/get", getCategories);
 
 // ✅ Get single category → Public
-router.get("/:id", getCategoryById);
+router.get("/get/:id", getCategoryById);
 
 // ✅ Update category → Admin only
-router.put("/:id", isAuthenticated, isAuthorized("Admin"), updateCategory);
+router.put("/update/:id", isAuthenticated, isAuthorized("Admin"), updateCategory);
 
 // ✅ Delete category → Admin only
-router.delete("/:id", isAuthenticated, isAuthorized("Admin"), deleteCategory);
+router.delete("/delete/:id", isAuthenticated, isAuthorized("Admin"), deleteCategory);
 
 export default router;

@@ -1,5 +1,5 @@
-// redux/slices/authSlice.ts
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+// src/store/slices/authSlice.ts
+import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
 import api from "../../api/axios";
 
 // ==========================
@@ -10,6 +10,7 @@ export interface User {
   name: string;
   email: string;
   role: "Admin" | "Supplier" | "Customer";
+  forcePasswordChange?: boolean;
 }
 
 interface AuthState {
@@ -18,6 +19,7 @@ interface AuthState {
   loading: boolean;
   error: string | null;
   success: string | null;
+  forcePasswordChange: boolean;
 }
 
 const initialState: AuthState = {
@@ -26,130 +28,112 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   success: null,
+  forcePasswordChange: false,
 };
 
 // ==========================
 // Async Thunks
 // ==========================
 
-// ✅ Register
-export const register = createAsyncThunk(
-  "auth/register",
-  async (
-    credentials: { name: string; email: string; password: string },
-    thunkAPI
-  ) => {
-    try {
-      const { data } = await api.post("/auth/register", credentials);
-      return data; // { success, message }
-    } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "Registration failed"
-      );
-    }
-  }
-);
-
-// ✅ Verify OTP
-export const verifyOTP = createAsyncThunk(
-  "auth/verifyOTP",
-  async (payload: { email: string; otp: string }, thunkAPI) => {
-    try {
-      const { data } = await api.post("/auth/verify", payload);
-      return data; // { success, message }
-    } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "OTP verification failed"
-      );
-    }
-  }
-);
-
-// ✅ Login
-export const login = createAsyncThunk(
-  "auth/login",
-  async (credentials: { email: string; password: string }, thunkAPI) => {
-    try {
-      const { data } = await api.post("/auth/login", credentials);
-      localStorage.setItem("token", data.token);
-      return data; // { success, message, token, user }
-    } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "Login failed"
-      );
-    }
-  }
-);
-
-// ✅ Get Current User
-export const getUser = createAsyncThunk("auth/getUser", async (_, thunkAPI) => {
+// Register
+export const register = createAsyncThunk<
+  { message: string },
+  { name: string; email: string; password: string },
+  { rejectValue: string }
+>("auth/register", async (credentials, thunkAPI) => {
   try {
-    const { data } = await api.get("/auth/me");
-    return data; // { success, user }
+    const { data } = await api.post("/auth/register", credentials);
+    return data;
   } catch (error: any) {
-    return thunkAPI.rejectWithValue(
-      error.response?.data?.message || "Failed to fetch user"
-    );
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "Registration failed");
   }
 });
 
-// ✅ Forgot Password
-export const forgotPassword = createAsyncThunk(
-  "auth/forgotPassword",
-  async (payload: { email: string }, thunkAPI) => {
+// Verify OTP
+export const verifyOTP = createAsyncThunk<
+  { message: string },
+  { email: string; otp: string },
+  { rejectValue: string }
+>("auth/verifyOTP", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.post("/auth/verify", payload);
+    return data;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "OTP verification failed");
+  }
+});
+
+// Login
+export const login = createAsyncThunk<
+  { message: string; token: string; user: User; requiresPasswordChange?: boolean },
+  { email: string; password: string },
+  { rejectValue: string }
+>("auth/login", async (credentials, thunkAPI) => {
+  try {
+    const { data } = await api.post("/auth/login", credentials);
+    localStorage.setItem("token", data.token);
+    return data;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "Login failed");
+  }
+});
+
+// Get Current User
+export const getUser = createAsyncThunk<{ user: User }, void, { rejectValue: string }>(
+  "auth/getUser",
+  async (_, thunkAPI) => {
     try {
-      const { data } = await api.post("/auth/password/forgot", payload);
-      return data; // { success, message }
+      const { data } = await api.get("/user/all");
+      return data;
     } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "Failed to send reset email"
-      );
+      localStorage.removeItem("token");
+      return thunkAPI.rejectWithValue(error.response?.data?.message || "Failed to fetch user");
     }
   }
 );
 
-// ✅ Reset Password
-export const resetPassword = createAsyncThunk(
-  "auth/resetPassword",
-  async (
-    payload: { token: string; password: string; confirmPassword: string },
-    thunkAPI
-  ) => {
-    try {
-      const { data } = await api.put(
-        `/auth/password/reset/${payload.token}`,
-        payload
-      );
-      return data; // { success, message, token, user }
-    } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "Password reset failed"
-      );
-    }
+// Forgot Password
+export const forgotPassword = createAsyncThunk<
+  { message: string },
+  { email: string },
+  { rejectValue: string }
+>("auth/forgotPassword", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.post("/auth/password/forgot", payload);
+    return data;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "Failed to send reset email");
   }
-);
+});
 
-// ✅ Update Password
-export const updatePassword = createAsyncThunk(
-  "auth/updatePassword",
-  async (
-    payload: {
-      currentPassword: string;
-      newPassword: string;
-      confirmNewPassword: string;
-    },
-    thunkAPI
-  ) => {
-    try {
-      const { data } = await api.put("/auth/password/update", payload);
-      return data; // { success, message }
-    } catch (error: any) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || "Failed to update password"
-      );
-    }
+// Reset Password
+export const resetPassword = createAsyncThunk<
+  { message: string; token: string; user: User },
+  { token: string; password: string; confirmPassword: string },
+  { rejectValue: string }
+>("auth/resetPassword", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.put(`/auth/password/reset/${payload.token}`, payload);
+    localStorage.setItem("token", data.token);
+    return data;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "Password reset failed");
   }
-);
+});
+
+// Update Password
+export const updatePassword = createAsyncThunk<
+  { message: string },
+  { currentPassword?: string; newPassword: string; confirmNewPassword: string },
+  { rejectValue: string }
+>("auth/updatePassword", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.put("/auth/password/update", payload);
+    return data;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(error.response?.data?.message || "Failed to update password");
+  }
+});
 
 // ==========================
 // Slice
@@ -165,17 +149,21 @@ const authSlice = createSlice({
     logout: (state) => {
       state.user = null;
       state.token = null;
+      state.forcePasswordChange = false;
       localStorage.removeItem("token");
     },
   },
   extraReducers: (builder) => {
-    // Register
-    builder.addCase(register.pending, (state) => {
+    // Generic pending handler
+    const pendingHandler = (state: AuthState) => {
       state.loading = true;
       state.error = null;
       state.success = null;
-    });
-    builder.addCase(register.fulfilled, (state, action) => {
+    };
+
+    // Register
+    builder.addCase(register.pending, pendingHandler);
+    builder.addCase(register.fulfilled, (state, action: PayloadAction<{ message: string }>) => {
       state.loading = false;
       state.success = action.payload.message;
     });
@@ -184,47 +172,74 @@ const authSlice = createSlice({
       state.error = action.payload as string;
     });
 
-    // Verify OTP
-    builder.addCase(verifyOTP.fulfilled, (state, action) => {
-      state.loading = false;
-      state.success = action.payload.message;
-    });
-
     // Login
-    builder.addCase(login.pending, (state) => {
-      state.loading = true;
-    });
-    builder.addCase(login.fulfilled, (state, action) => {
-      state.loading = false;
-      state.user = action.payload.user;
-      state.token = action.payload.token;
-      state.success = action.payload.message;
-    });
+    builder.addCase(login.pending, pendingHandler);
+    builder.addCase(
+      login.fulfilled,
+      (state, action: PayloadAction<{ message: string; token: string; user: User; requiresPasswordChange?: boolean }>) => {
+        state.loading = false;
+        state.token = action.payload.token;
+        state.user = action.payload.user;
+        state.success = action.payload.message;
+        state.forcePasswordChange = action.payload.requiresPasswordChange || action.payload.user.forcePasswordChange || false;
+      }
+    );
     builder.addCase(login.rejected, (state, action) => {
       state.loading = false;
       state.error = action.payload as string;
     });
 
     // Get User
-    builder.addCase(getUser.fulfilled, (state, action) => {
+    builder.addCase(getUser.pending, pendingHandler);
+    builder.addCase(getUser.fulfilled, (state, action: PayloadAction<{ user: User }>) => {
+      state.loading = false;
       state.user = action.payload.user;
+      state.forcePasswordChange = action.payload.user.forcePasswordChange || false;
+    });
+    builder.addCase(getUser.rejected, (state, action) => {
+      state.loading = false;
+      state.user = null;
+      state.token = null;
+      state.forcePasswordChange = false;
+      state.error = action.payload as string;
     });
 
     // Forgot Password
-    builder.addCase(forgotPassword.fulfilled, (state, action) => {
+    builder.addCase(forgotPassword.pending, pendingHandler);
+    builder.addCase(forgotPassword.fulfilled, (state, action: PayloadAction<{ message: string }>) => {
+      state.loading = false;
       state.success = action.payload.message;
+    });
+    builder.addCase(forgotPassword.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
     });
 
     // Reset Password
-    builder.addCase(resetPassword.fulfilled, (state, action) => {
+    builder.addCase(resetPassword.pending, pendingHandler);
+    builder.addCase(resetPassword.fulfilled, (state, action: PayloadAction<{ message: string; token: string; user: User }>) => {
+      state.loading = false;
       state.user = action.payload.user;
       state.token = action.payload.token;
       state.success = action.payload.message;
+      state.forcePasswordChange = action.payload.user.forcePasswordChange || false;
+    });
+    builder.addCase(resetPassword.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
     });
 
     // Update Password
-    builder.addCase(updatePassword.fulfilled, (state, action) => {
+    builder.addCase(updatePassword.pending, pendingHandler);
+    builder.addCase(updatePassword.fulfilled, (state, action: PayloadAction<{ message: string }>) => {
+      state.loading = false;
       state.success = action.payload.message;
+      if (state.user) state.user.forcePasswordChange = false;
+      state.forcePasswordChange = false;
+    });
+    builder.addCase(updatePassword.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload as string;
     });
   },
 });

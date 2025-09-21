@@ -1,21 +1,56 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
-import HomePage from "./pages/HomePage";
+import { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
+import { getUser } from "./redux/slices/authSlice";
+import type { RootState, AppDispatch } from "./redux/store";
 
-//import PrivateRoute from "./routes/PrivateRoute";
+import { adminRoutes, authRoutes, notFoundRoute, supplierRoutes, userRoutes } from "./routes/Routes";
+import AdminRoute from "./routes/AdminRoute";
+import PrivateRoute from "./routes/PrivateRoute";
+import SupplierRoute from "./routes/SupplierRoute";
 
 function App() {
+  const dispatch = useDispatch<AppDispatch>();
+  const { token } = useSelector((state: RootState) => state.auth);
+
+  // ✅ Hydrate user on refresh if token exists
+  useEffect(() => {
+    if (token) {
+      dispatch(getUser());
+    }
+  }, [token, dispatch]);
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        {/* ✅ Protected routes 
-        <Route element={<PrivateRoute />}>
-          <Route path="/" element={<Dashboard />} />
-        </Route>  */}
+        {/* Auth / Public Routes */}
+        {authRoutes.map(({ path, element }, i) => (
+          <Route key={i} path={path} element={element} />
+        ))}
+
+        {/* User Routes */}
+        {userRoutes.map(({ path, element }, i) => (
+          <Route key={i} path={path} element={<PrivateRoute>{element}</PrivateRoute>} />
+        ))}
+
+        {/* Admin Routes */}
+        {adminRoutes.map(({ path, element }, i) => (
+          <Route key={i} path={path} element={<AdminRoute>{element}</AdminRoute>} />
+        ))}
+
+        {/* Supplier Routes */}
+        {supplierRoutes.map(({ path, element }, i) => (
+          <Route key={i} path={path} element={<SupplierRoute>{element}</SupplierRoute>} />
+        ))}
+
+        {/* 404 */}
+        <Route path={notFoundRoute.path} element={notFoundRoute.element} />
       </Routes>
+
+      <ToastContainer position="top-right" autoClose={5000} hideProgressBar={false} />
     </BrowserRouter>
   );
 }

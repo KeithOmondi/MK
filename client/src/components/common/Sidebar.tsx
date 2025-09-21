@@ -177,6 +177,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     </button>
 
                     {/* Subcategories */}
+                    {/* Subcategories */}
                     <Transition
                       show={expandedCategory === cat.name}
                       as={Fragment}
@@ -190,7 +191,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                       <div className="ml-6 mt-1 flex flex-col gap-1">
                         {cat.subcategories.map((sub) => (
                           <Link
-                            to={`/${sub.toLowerCase().replace(/\s+/g, "-")}`}
+                            // Route format: /category/<category>/<subcategory>
+                            to={`/category/${cat.name
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}/${sub
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}`}
                             key={sub}
                             className="px-2 py-1 text-sm text-gray-600 hover:text-[#FF6B35] hover:bg-gray-50 rounded transition-colors"
                             onClick={onClose}

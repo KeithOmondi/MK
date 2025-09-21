@@ -6,6 +6,7 @@ import {
   updateProduct,
   deleteProduct,
   deleteProductImage,
+  getHomepageProducts,      // ✅ new
 } from "../controller/productController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/upload.js";
@@ -22,14 +23,17 @@ router.post(
 );
 
 // ✅ Get all products → Public
-router.get("/", getProducts);
+router.get("/get", getProducts);
+
+// ✅ Get homepage featured products (FlashSales, Deals, New Arrivals) → Public
+router.get("/homepage", getHomepageProducts);
 
 // ✅ Get single product → Public
-router.get("/:id", getProductById);
+router.get("/get/:id", getProductById);
 
 // ✅ Update product → Admin or Supplier
 router.put(
-  "/:id",
+  "/update/:id",
   isAuthenticated,
   isAuthorized("Admin", "Supplier"),
   upload.array("images", 5),
@@ -37,11 +41,16 @@ router.put(
 );
 
 // ✅ Delete product → Admin or Supplier
-router.delete("/:id", isAuthenticated, isAuthorized("Admin", "Supplier"), deleteProduct);
+router.delete(
+  "/delete/:id",
+  isAuthenticated,
+  isAuthorized("Admin", "Supplier"),
+  deleteProduct
+);
 
 // ✅ Delete single product image → Admin or Supplier
 router.delete(
-  "/:productId/images/:publicId",
+  "/delete/:productId/images/:publicId",
   isAuthenticated,
   isAuthorized("Admin", "Supplier"),
   deleteProductImage

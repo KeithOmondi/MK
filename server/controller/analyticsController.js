@@ -1,7 +1,8 @@
+// controllers/analyticsController.js
 import asyncHandler from "express-async-handler";
 import Order from "../models/Order.js";
-import Product from "../models/Product.js";
 import Supplier from "../models/Supplier.js";
+import Product from "../models/Product.js";
 import { User } from "../models/userModel.js";
 
 // ====================
@@ -23,14 +24,13 @@ export const getAdminAnalytics = asyncHandler(async (req, res) => {
     { $group: { _id: "$status", count: { $sum: 1 } } },
   ]);
 
-  // Total users
+  // Total users & suppliers
   const totalUsers = await User.countDocuments();
-
-  // Total suppliers
   const totalSuppliers = await Supplier.countDocuments();
 
   // Top products by revenue
   const topProducts = await Order.aggregate([
+    { $match: { paymentStatus: "paid" } },
     { $unwind: "$items" },
     {
       $group: {
@@ -50,7 +50,14 @@ export const getAdminAnalytics = asyncHandler(async (req, res) => {
       },
     },
     { $unwind: "$product" },
-    { $project: { _id: 1, name: "$product.name", totalSold: 1, revenue: 1 } },
+    {
+      $project: {
+        _id: 1,
+        name: "$product.name",
+        totalSold: 1,
+        revenue: 1,
+      },
+    },
   ]);
 
   res.json({
@@ -68,14 +75,16 @@ export const getAdminAnalytics = asyncHandler(async (req, res) => {
 // ====================
 export const getSupplierAnalytics = asyncHandler(async (req, res) => {
   const supplierId = req.user.supplierProfile; // must be linked
-
   if (!supplierId) {
     res.status(400);
     throw new Error("Supplier profile not found for this user");
   }
 
-  // Supplier orders
-  const orders = await Order.find({ supplier: supplierId, paymentStatus: "paid" });
+  // Supplier paid orders
+  const orders = await Order.find({
+    supplier: supplierId,
+    paymentStatus: "paid",
+  });
 
   const totalRevenue = orders.reduce((acc, order) => acc + order.totalAmount, 0);
   const totalOrders = orders.length;
@@ -85,9 +94,9 @@ export const getSupplierAnalytics = asyncHandler(async (req, res) => {
     { $group: { _id: "$status", count: { $sum: 1 } } },
   ]);
 
-  // Top-selling products by this supplier
+  // Top-selling products for this supplier
   const topProducts = await Order.aggregate([
-    { $match: { supplier: supplierId } },
+    { $match: { supplier: supplierId, paymentStatus: "paid" } },
     { $unwind: "$items" },
     {
       $group: {
@@ -107,7 +116,14 @@ export const getSupplierAnalytics = asyncHandler(async (req, res) => {
       },
     },
     { $unwind: "$product" },
-    { $project: { _id: 1, name: "$product.name", totalSold: 1, revenue: 1 } },
+    {
+      $project: {
+        _id: 1,
+        name: "$product.name",
+        totalSold: 1,
+        revenue: 1,
+      },
+    },
   ]);
 
   res.json({
@@ -124,8 +140,9 @@ export const getSupplierAnalytics = asyncHandler(async (req, res) => {
 export const getCustomerAnalytics = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
-  // User orders
+  // Customer paid orders
   const orders = await Order.find({ buyer: userId, paymentStatus: "paid" });
+
   const totalSpent = orders.reduce((acc, order) => acc + order.totalAmount, 0);
   const totalOrders = orders.length;
 
@@ -134,9 +151,9 @@ export const getCustomerAnalytics = asyncHandler(async (req, res) => {
     { $group: { _id: "$status", count: { $sum: 1 } } },
   ]);
 
-  // Favorite products (most ordered)
+  // Favorite products (most frequently ordered)
   const favoriteProducts = await Order.aggregate([
-    { $match: { buyer: userId } },
+    { $match: { buyer: userId, paymentStatus: "paid" } },
     { $unwind: "$items" },
     {
       $group: {
@@ -155,7 +172,13 @@ export const getCustomerAnalytics = asyncHandler(async (req, res) => {
       },
     },
     { $unwind: "$product" },
-    { $project: { _id: 1, name: "$product.name", totalOrdered: 1 } },
+    {
+      $project: {
+        _id: 1,
+        name: "$product.name",
+        totalOrdered: 1,
+      },
+    },
   ]);
 
   res.json({

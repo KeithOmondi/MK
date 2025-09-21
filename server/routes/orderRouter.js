@@ -14,7 +14,7 @@ const router = express.Router();
 router.post("/create", isAuthenticated, createOrder);
 
 // ✅ Get all orders → Admin & Supplier can see all, User can see own
-router.get("/get", isAuthenticated, getOrders);
+router.get("/get", isAuthenticated, isAuthorized("Admin", "Supplier"), getOrders);
 
 // ✅ Get single order → User can see own, Admin/Supplier can see all
 router.get("/get/:id", isAuthenticated, getOrderById);
