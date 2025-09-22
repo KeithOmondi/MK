@@ -25,9 +25,17 @@ import VerifyOtp from "../pages/auth/VerifyOTP";
 import ForgotPassword from "../pages/auth/ForgotPassword";
 import ResetPassword from "../pages/auth/ResetPassword";
 import AddProducts from "../pages/Supplier/AddProduct";
+import UserLayout from "../components/User/UserLayout";
+import UserDashboard from "../pages/User/UserDashboard";
+import Cart from "../components/Cart/Cart";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
+  { path: "/dashboard", element: (
+    <UserLayout>
+      <UserDashboard />
+    </UserLayout>
+  ) },
   { path: "/", element: <HomePage /> },
   { path: "/customer-service", element: <CustomerService /> },
   { path: "/deals", element: <TodaysDeal /> },
@@ -38,6 +46,7 @@ export const userRoutes = [
   { path: "/category/:category/:subcategory", element: <CategoryPage /> },
   { path: "/product/:id", element: <ProductPage /> },
   { path: "/community", element: <SupplierApplicationForm /> },
+  { path: "/cart", element: <Cart /> },
 ];
 
 // ------------------ ADMIN ROUTES ------------------

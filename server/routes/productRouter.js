@@ -6,7 +6,7 @@ import {
   updateProduct,
   deleteProduct,
   deleteProductImage,
-  getHomepageProducts,      // ✅ new
+  getHomepageProducts,
 } from "../controller/productController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/upload.js";
@@ -22,16 +22,20 @@ router.post(
   createProduct
 );
 
-// ✅ Get all products → Public
+// ✅ Get all products (query-based filters + pagination)
 router.get("/get", getProducts);
 
-// ✅ Get homepage featured products (FlashSales, Deals, New Arrivals) → Public
+// ✅ Get products by category slug
+router.get("/category/:parentSlug", getProducts);
+router.get("/category/:parentSlug/:childSlug", getProducts);
+
+// ✅ Get homepage featured products (FlashSales, Deals, New Arrivals)
 router.get("/homepage", getHomepageProducts);
 
-// ✅ Get single product → Public
+// ✅ Get single product
 router.get("/get/:id", getProductById);
 
-// ✅ Update product → Admin or Supplier
+// ✅ Update product
 router.put(
   "/update/:id",
   isAuthenticated,
@@ -40,7 +44,7 @@ router.put(
   updateProduct
 );
 
-// ✅ Delete product → Admin or Supplier
+// ✅ Delete product
 router.delete(
   "/delete/:id",
   isAuthenticated,
@@ -48,7 +52,7 @@ router.delete(
   deleteProduct
 );
 
-// ✅ Delete single product image → Admin or Supplier
+// ✅ Delete single product image
 router.delete(
   "/delete/:productId/images/:publicId",
   isAuthenticated,

@@ -7,6 +7,7 @@ import categoryReducer from "./slices/categorySlice";
 import paymentReducer from "./slices/paymentSlice";
 import chatReducer from "./slices/chatSlice";
 import analyticsReducer from "./slices/analyticsSlice";
+import cartReducer from "./slices/cartSlice"
 
 export const store = configureStore({
   reducer: {
@@ -17,7 +18,8 @@ export const store = configureStore({
      categories: categoryReducer,
      payment: paymentReducer,
      chat: chatReducer,
-     analytics: analyticsReducer
+     analytics: analyticsReducer,
+     cart: cartReducer
   },
 });
 

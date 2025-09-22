@@ -12,11 +12,21 @@ interface FormData {
 
 const LoginPage: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({ email: "", password: "" });
+  const [remember, setRemember] = useState(false);
   const [toastShown, setToastShown] = useState(false);
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
 
   const { loading, token, error, user } = useSelector((state: RootState) => state.auth);
+
+  // Restore remembered email
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("rememberEmail");
+    if (savedEmail) {
+      setFormData((prev) => ({ ...prev, email: savedEmail }));
+      setRemember(true);
+    }
+  }, []);
 
   // Redirect based on role or force password change
   useEffect(() => {
@@ -47,6 +57,7 @@ const LoginPage: React.FC = () => {
   useEffect(() => {
     if (error) {
       toast.error(error);
+      setFormData((prev) => ({ ...prev, password: "" })); // clear password on error
       dispatch(clearAuthState());
     }
   }, [error, dispatch]);
@@ -58,11 +69,21 @@ const LoginPage: React.FC = () => {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     const { email, password } = formData;
+
     if (!email.trim() || !password.trim()) {
       toast.warn("Email and password cannot be empty.");
       return;
     }
-    dispatch(login({ email, password }));
+
+    if (remember) {
+      localStorage.setItem("rememberEmail", email);
+    } else {
+      localStorage.removeItem("rememberEmail");
+    }
+
+    dispatch(login({ email, password }))
+      .unwrap()
+      .catch((err) => toast.error(err));
   };
 
   return (
@@ -83,6 +104,7 @@ const LoginPage: React.FC = () => {
               value={formData.email}
               onChange={handleChange}
               required
+              autoComplete="email"
               placeholder="you@example.com"
               className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
             />
@@ -97,6 +119,7 @@ const LoginPage: React.FC = () => {
               value={formData.password}
               onChange={handleChange}
               required
+              autoComplete="current-password"
               placeholder="••••••••"
               className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
             />
@@ -104,7 +127,12 @@ const LoginPage: React.FC = () => {
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-700 cursor-pointer">
-              <input type="checkbox" className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 transition duration-150 ease-in-out" />
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 transition duration-150 ease-in-out"
+              />
               <span className="ml-2 select-none">Remember me</span>
             </label>
             <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition duration-150 ease-in-out">

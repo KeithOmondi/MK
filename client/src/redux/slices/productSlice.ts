@@ -14,38 +14,46 @@ export interface Image {
 export interface Category {
   _id: string;
   name: string;
-}
-
-export interface Logistics {
-  weight?: number;
-  dimensions?: {
-    length: number;
-    width: number;
-    height: number;
-  };
-  shippingMethods?: string[];
-  handlingTime?: number;
+  slug?: string;
+  parentCategory?: string | null;
 }
 
 export interface Product {
   _id: string;
   name: string;
   description: string;
-  category: string | Category; // or Category type if populated
+  category: string | Category;
+
+  // 🏷️ Commercial
   price: number;
   stock: number | null;
-  images: {
-    url: string;
-    public_id: string;
-  }[];
-  supplier: string; // or Supplier type if populated
+  brand?: string;
+  tags?: string[];
+  status: "active" | "inactive" | "draft";
+
+  // 🎨 Variations
+  color?: string;
+  size?: string;
+  material?: string;
+
+  // 💡 Extra info
+  warranty?: string;
+  modelNumber?: string;
+  sku?: string;
+
+  // 🖼️ Media
+  images: Image[];
+
+  // 👤 Supplier
+  supplier: string;
+
+  // ⭐ Ratings / Reviews
   ratings: {
     userId: string;
     rating: number;
     review?: string;
     createdAt: string;
   }[];
-  status: "active" | "inactive" | "draft";
 
   // 🔥 Promotions
   isFlashSale: boolean;
@@ -55,7 +63,7 @@ export interface Product {
   isNewArrival: boolean;
   newArrivalExpiry?: string;
 
-  // 🚚 Logistics fields
+  // 🚚 Logistics
   warehouseLocation?: {
     address: string;
     city: string;
@@ -79,8 +87,6 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
 }
-
-
 
 export interface ProductListResponse {
   products: Product[];
@@ -126,7 +132,7 @@ const initialState: ProductState = {
 // Async Thunks
 // ==========================
 
-// Create Product (Admin/Supplier)
+// Create Product
 export const createProduct = createAsyncThunk<Product, FormData>(
   "products/create",
   async (formData, { rejectWithValue }) => {
@@ -141,20 +147,52 @@ export const createProduct = createAsyncThunk<Product, FormData>(
   }
 );
 
-// Fetch all products (filters & pagination)
+// Fetch all products (query filters)
 export const fetchProducts = createAsyncThunk<
   ProductListResponse,
-  { page?: number; limit?: number; keyword?: string; category?: string; minPrice?: number; maxPrice?: number; sortBy?: string }
->("products/fetchAll", async (params, { rejectWithValue }) => {
+  {
+    page?: number;
+    limit?: number;
+    keyword?: string;
+    category?: string;
+    parentSlug?: string;
+    childSlug?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    sortBy?: string;
+    brand?: string;
+    color?: string;
+    size?: string;
+    material?: string;
+  }
+>("products/fetchProducts", async (params, thunkAPI) => {
   try {
-    const { data } = await api.get(`/products/get`, { params });
-    return data;
+    const { data } = await api.get("/products/get", { params });
+    return data as ProductListResponse;
+  } catch (error: any) {
+    return thunkAPI.rejectWithValue(
+      error.response?.data?.message || error.message
+    );
+  }
+});
+
+// 🔥 Fetch products by category slugs
+export const fetchProductsByCategory = createAsyncThunk<
+  ProductListResponse,
+  { parentSlug: string; childSlug?: string; page?: number; limit?: number }
+>("products/fetchByCategory", async ({ parentSlug, childSlug, page, limit }, { rejectWithValue }) => {
+  try {
+    const url = childSlug
+      ? `/products/category/${parentSlug}/${childSlug}`
+      : `/products/category/${parentSlug}`;
+    const { data } = await api.get(url, { params: { page, limit } });
+    return data as ProductListResponse;
   } catch (err: any) {
     return rejectWithValue(err.response?.data?.message || err.message);
   }
 });
 
-// Fetch homepage products (FlashSales, Deals, New Arrivals)
+// Homepage
 export const fetchHomepageProducts = createAsyncThunk<
   { flashSales: Product[]; deals: Product[]; newArrivals: Product[] }
 >("products/fetchHomepage", async (_, { rejectWithValue }) => {
@@ -166,7 +204,7 @@ export const fetchHomepageProducts = createAsyncThunk<
   }
 });
 
-// Fetch single product
+// Single product
 export const fetchProductById = createAsyncThunk<Product, string>(
   "products/fetchById",
   async (id, { rejectWithValue }) => {
@@ -179,7 +217,7 @@ export const fetchProductById = createAsyncThunk<Product, string>(
   }
 );
 
-// Update product
+// Update
 export const updateProduct = createAsyncThunk<Product, { id: string; formData: FormData }>(
   "products/update",
   async ({ id, formData }, { rejectWithValue }) => {
@@ -194,7 +232,7 @@ export const updateProduct = createAsyncThunk<Product, { id: string; formData: F
   }
 );
 
-// Delete product
+// Delete
 export const deleteProduct = createAsyncThunk<{ message: string; id: string }, string>(
   "products/delete",
   async (id, { rejectWithValue }) => {
@@ -207,7 +245,7 @@ export const deleteProduct = createAsyncThunk<{ message: string; id: string }, s
   }
 );
 
-// Delete single image
+// Delete Image
 export const deleteProductImage = createAsyncThunk<Product, { productId: string; publicId: string }>(
   "products/deleteImage",
   async ({ productId, publicId }, { rejectWithValue }) => {
@@ -234,7 +272,7 @@ const productSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Create Product
+      // Create
       .addCase(createProduct.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -248,7 +286,7 @@ const productSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // Fetch Products
+      // Fetch All
       .addCase(fetchProducts.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -265,12 +303,29 @@ const productSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // Fetch Homepage Products
+      // 🔥 Fetch By Category
+      .addCase(fetchProductsByCategory.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchProductsByCategory.fulfilled, (state, action: PayloadAction<ProductListResponse>) => {
+        state.loading = false;
+        state.products = action.payload.products;
+        state.page = action.payload.page;
+        state.pages = action.payload.pages;
+        state.total = action.payload.total;
+      })
+      .addCase(fetchProductsByCategory.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+
+      // Homepage
       .addCase(fetchHomepageProducts.fulfilled, (state, action) => {
         state.homepage = action.payload;
       })
 
-      // Fetch Product By Id
+      // Single
       .addCase(fetchProductById.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -284,7 +339,7 @@ const productSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // Update Product
+      // Update
       .addCase(updateProduct.fulfilled, (state, action: PayloadAction<Product>) => {
         state.loading = false;
         state.products = state.products.map((p) =>
@@ -293,12 +348,12 @@ const productSlice = createSlice({
         state.product = action.payload;
       })
 
-      // Delete Product
+      // Delete
       .addCase(deleteProduct.fulfilled, (state, action) => {
         state.products = state.products.filter((p) => p._id !== action.payload.id);
       })
 
-      // Delete Product Image
+      // Delete Image
       .addCase(deleteProductImage.fulfilled, (state, action: PayloadAction<Product>) => {
         state.product = action.payload;
         state.products = state.products.map((p) =>

@@ -1,6 +1,6 @@
-// scripts/seedCategories.ts
+// scripts/seedCategories.js
 import mongoose from "mongoose";
-import Category from "./models/Category.js"
+import Category from "./models/Category.js";
 
 const categories = [
   {
@@ -22,12 +22,26 @@ const categories = [
   {
     name: "Women's Fashion",
     icon: "ShoppingBag",
-    subcategories: ["Shoes", "Watches", "Jewellery", "Handbags", "Clothing", "Accessories"],
+    subcategories: [
+      "Shoes",
+      "Watches",
+      "Jewellery",
+      "Handbags",
+      "Clothing",
+      "Accessories",
+    ],
   },
   {
     name: "Boys & Girls Fashion",
     icon: "ShoppingBag",
-    subcategories: ["Shoes", "Watches", "Jewellery", "Handbags", "Clothing", "Accessories"],
+    subcategories: [
+      "Shoes",
+      "Watches",
+      "Jewellery",
+      "Handbags",
+      "Clothing",
+      "Accessories",
+    ],
   },
   {
     name: "Home & Kitchen",
@@ -73,36 +87,52 @@ const categories = [
   {
     name: "Sports and Outdoor",
     icon: "Eye",
-    subcategories: ["Sports & Outdoor", "Outdoor Recreation", "Sports & Fitness"],
+    subcategories: [
+      "Sports & Outdoor",
+      "Outdoor Recreation",
+      "Sports & Fitness",
+    ],
   },
 ];
 
+// ✅ Plain JS slugify
+const slugify = (str) =>
+  str
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "") // remove special chars
+    .trim()
+    .replace(/\s+/g, "-");
+
 const seed = async () => {
   try {
-    await mongoose.connect("mongodb+srv://mktechnologies154_db_user:keith.@cluster0.wzptdpc.mongodb.net/MKSTORE?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect(
+      "mongodb+srv://mktechnologies154_db_user:keith.@cluster0.wzptdpc.mongodb.net/MKSTORE?retryWrites=true&w=majority&appName=Cluster0"
+    );
 
-    console.log("Connected to DB");
+    console.log("✅ Connected to DB");
 
-    await Category.deleteMany({}); // clear old data
+    await Category.deleteMany({});
+    console.log("🗑️ Old categories cleared");
 
     for (const cat of categories) {
       const parent = await Category.create({
         name: cat.name,
-        slug: cat.name.toLowerCase().replace(/\s+/g, "-"),
+        slug: slugify(cat.name),
         icon: cat.icon,
       });
 
       for (const sub of cat.subcategories) {
         await Category.create({
           name: sub,
-          slug: sub.toLowerCase().replace(/\s+/g, "-"),
+          // ✅ Unique slug with parent name included
+          slug: slugify(`${cat.name}-${sub}`),
           parentCategory: parent._id,
         });
       }
     }
 
     console.log("✅ Categories Seeded Successfully!");
-    process.exit();
+    process.exit(0);
   } catch (err) {
     console.error("❌ Error seeding categories:", err);
     process.exit(1);

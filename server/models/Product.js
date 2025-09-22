@@ -49,6 +49,11 @@ const productSchema = new mongoose.Schema(
       default: "active",
     },
 
+    // 🆕 Brand & Variations
+    brand: { type: String },
+    color: { type: String },
+    size: { type: String },
+
     // 🔥 Promotions
     isFlashSale: { type: Boolean, default: false },
     flashSaleEndDate: { type: Date },
@@ -66,12 +71,12 @@ const productSchema = new mongoose.Schema(
       width: { type: Number },
       height: { type: Number },
     },
-    shippingRegions: [{ type: String }], // e.g. ["Kenya", "Uganda", "Tanzania"]
-    deliveryTime: { type: String }, // e.g. "2-5 business days"
+    shippingRegions: [{ type: String }],
+    deliveryTime: { type: String },
     freeShipping: { type: Boolean, default: false },
-    warehouseLocation: { type: String }, // e.g. "Nairobi, KE"
-    returnPolicy: { type: String }, // text describing policy
-    warranty: { type: String }, // optional warranty info
+    warehouseLocation: { type: String },
+    returnPolicy: { type: String },
+    warranty: { type: String },
   },
   { timestamps: true }
 );

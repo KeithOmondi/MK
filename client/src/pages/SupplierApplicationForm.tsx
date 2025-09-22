@@ -25,6 +25,8 @@ import {
   selectSupplierSuccess,
 } from "../redux/slices/supplierSlice";
 import type { AppDispatch } from "../redux/store";
+import Header from "../components/common/Header";
+import Footer from "../components/common/Footer";
 
 type AccountStepData = {
   username: string;
@@ -176,6 +178,9 @@ const SupplierRegistrationForm: React.FC = () => {
   // Render
   // =====================
   return (
+    <>
+    <div><Header /></div>
+
     <div className="max-w-2xl mx-auto p-4 md:p-6">
       <Card>
         <CardHeader className="text-center">
@@ -388,6 +393,10 @@ const SupplierRegistrationForm: React.FC = () => {
         </CardContent>
       </Card>
     </div>
+
+    <div><Footer /></div>
+    
+    </>
   );
 };
 
