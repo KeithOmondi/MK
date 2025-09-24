@@ -1,28 +1,24 @@
+// utils/sendToken.js
 export const sendToken = (user, statusCode, message, res) => {
-  const token = user.generateToken();
+  const token = user.getJwtToken(); // ✅ consistent with userModel.js
 
-  // Remove sensitive fields before sending (e.g., password)
-  const sanitizedUser = {
-    _id: user._id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    accountVerified: user.accountVerified,
-    avatar: user.avatar,
-  };
+  // user.toJSON() already strips sensitive fields like password, reset tokens, OTPs
+  const safeUser = user.toJSON();
 
   res
     .status(statusCode)
     .cookie("token", token, {
-      expires: new Date(Date.now() + process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000),
+      expires: new Date(
+        Date.now() + process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000
+      ),
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // Only send cookies over HTTPS in production
-      sameSite: "strict", // Helps protect against CSRF
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
     })
     .json({
       success: true,
       message,
-      user: sanitizedUser,
+      user: safeUser,
       token,
     });
 };

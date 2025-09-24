@@ -26,6 +26,7 @@ export interface Product {
 
   // 🏷️ Commercial
   price: number;
+  oldPrice?: number | null; // ✅ added
   stock: number | null;
   brand?: string;
   tags?: string[];
@@ -55,7 +56,7 @@ export interface Product {
     createdAt: string;
   }[];
 
-  // 🔥 Promotions
+  // 🔥 Promotions (legacy flags — still supported if needed)
   isFlashSale: boolean;
   flashSaleEndDate?: string;
   isDealOfWeek: boolean;
@@ -107,6 +108,7 @@ interface ProductState {
     flashSales: Product[];
     deals: Product[];
     newArrivals: Product[];
+    topTrending: Product[]; // ✅ added
   };
 }
 
@@ -125,7 +127,24 @@ const initialState: ProductState = {
     flashSales: [],
     deals: [],
     newArrivals: [],
+    topTrending: [], // ✅ init
   },
+};
+
+// ==========================
+// Helpers
+// ==========================
+const toFormData = (payload: any): FormData => {
+  if (payload instanceof FormData) return payload;
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((v) => formData.append(key, v as any));
+    } else if (value !== undefined && value !== null) {
+      formData.append(key, value as any);
+    }
+  });
+  return formData;
 };
 
 // ==========================
@@ -133,10 +152,11 @@ const initialState: ProductState = {
 // ==========================
 
 // Create Product
-export const createProduct = createAsyncThunk<Product, FormData>(
+export const createProduct = createAsyncThunk<Product, any>(
   "products/create",
-  async (formData, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
+      const formData = toFormData(payload);
       const { data } = await api.post(`/products/create`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -147,7 +167,7 @@ export const createProduct = createAsyncThunk<Product, FormData>(
   }
 );
 
-// Fetch all products (query filters)
+// Fetch all products
 export const fetchProducts = createAsyncThunk<
   ProductListResponse,
   {
@@ -164,19 +184,17 @@ export const fetchProducts = createAsyncThunk<
     color?: string;
     size?: string;
     material?: string;
-  }
+  } | void
 >("products/fetchProducts", async (params, thunkAPI) => {
   try {
     const { data } = await api.get("/products/get", { params });
     return data as ProductListResponse;
   } catch (error: any) {
-    return thunkAPI.rejectWithValue(
-      error.response?.data?.message || error.message
-    );
+    return thunkAPI.rejectWithValue(error.response?.data?.message || error.message);
   }
 });
 
-// 🔥 Fetch products by category slugs
+// Fetch products by category
 export const fetchProductsByCategory = createAsyncThunk<
   ProductListResponse,
   { parentSlug: string; childSlug?: string; page?: number; limit?: number }
@@ -194,7 +212,7 @@ export const fetchProductsByCategory = createAsyncThunk<
 
 // Homepage
 export const fetchHomepageProducts = createAsyncThunk<
-  { flashSales: Product[]; deals: Product[]; newArrivals: Product[] }
+  { flashSales: Product[]; deals: Product[]; newArrivals: Product[]; topTrending: Product[] }
 >("products/fetchHomepage", async (_, { rejectWithValue }) => {
   try {
     const { data } = await api.get(`/products/homepage`);
@@ -218,10 +236,11 @@ export const fetchProductById = createAsyncThunk<Product, string>(
 );
 
 // Update
-export const updateProduct = createAsyncThunk<Product, { id: string; formData: FormData }>(
+export const updateProduct = createAsyncThunk<Product, { id: string; payload: any }>(
   "products/update",
-  async ({ id, formData }, { rejectWithValue }) => {
+  async ({ id, payload }, { rejectWithValue }) => {
     try {
+      const formData = toFormData(payload);
       const { data } = await api.put(`/products/update/${id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -303,7 +322,7 @@ const productSlice = createSlice({
         state.error = action.payload as string;
       })
 
-      // 🔥 Fetch By Category
+      // Fetch By Category
       .addCase(fetchProductsByCategory.pending, (state) => {
         state.loading = true;
         state.error = null;

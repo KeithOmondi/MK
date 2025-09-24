@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 
 interface CountdownProps {
-  targetDate: string; // ISO date string, e.g., "2025-09-30T23:59:59"
+  targetDate?: string; // now optional
 }
 
 interface TimeLeft {
@@ -13,8 +13,17 @@ interface TimeLeft {
 
 const Countdown: React.FC<CountdownProps> = ({ targetDate }) => {
   const calculateTimeLeft = (): TimeLeft => {
-    const now = new Date().getTime();
+    if (!targetDate) {
+      return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+    }
+
     const target = new Date(targetDate).getTime();
+    if (isNaN(target)) {
+      // invalid date string
+      return { days: 0, hours: 0, minutes: 0, seconds: 0 };
+    }
+
+    const now = new Date().getTime();
     const difference = target - now;
 
     if (difference <= 0) {
@@ -40,6 +49,11 @@ const Countdown: React.FC<CountdownProps> = ({ targetDate }) => {
   }, [targetDate]);
 
   const formatNumber = (num: number) => String(num).padStart(2, "0");
+
+  // ✅ Don’t render anything if no valid targetDate
+  if (!targetDate || isNaN(new Date(targetDate).getTime())) {
+    return null;
+  }
 
   return (
     <div className="flex gap-2 text-white font-bold text-lg">

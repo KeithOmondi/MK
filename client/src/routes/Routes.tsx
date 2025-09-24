@@ -28,6 +28,7 @@ import AddProducts from "../pages/Supplier/AddProduct";
 import UserLayout from "../components/User/UserLayout";
 import UserDashboard from "../pages/User/UserDashboard";
 import Cart from "../components/Cart/Cart";
+import ManageProducts from "../pages/Supplier/ManageProducts";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -36,17 +37,7 @@ export const userRoutes = [
       <UserDashboard />
     </UserLayout>
   ) },
-  { path: "/", element: <HomePage /> },
-  { path: "/customer-service", element: <CustomerService /> },
-  { path: "/deals", element: <TodaysDeal /> },
-  { path: "/electronics", element: <Electronics /> },
-  { path: "/fashion", element: <Fashion /> },
-  { path: "/grocery", element: <Grocery /> },
-  { path: "/category/:category", element: <CategoryPage /> },
-  { path: "/category/:category/:subcategory", element: <CategoryPage /> },
-  { path: "/product/:id", element: <ProductPage /> },
-  { path: "/community", element: <SupplierApplicationForm /> },
-  { path: "/cart", element: <Cart /> },
+  
 ];
 
 // ------------------ ADMIN ROUTES ------------------
@@ -103,6 +94,14 @@ export const supplierRoutes = [
       </SupplierLayout>
     ),
   },
+  {
+    path: "/supplier/products",
+    element: (
+      <SupplierLayout>
+        <ManageProducts />
+      </SupplierLayout>
+    ),
+  },
 ];
 
 // ------------------ AUTH ROUTES ------------------
@@ -111,7 +110,18 @@ export const authRoutes = [
   { path: "/register", element: <Signup /> },
   { path: "/verify-otp", element: <VerifyOtp /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
-  { path: "/password/reset/:id", element: <ResetPassword /> },
+  { path: "/password/reset/:token", element: <ResetPassword /> },
+  { path: "/", element: <HomePage /> },
+  { path: "/customer-service", element: <CustomerService /> },
+  { path: "/deals", element: <TodaysDeal /> },
+  { path: "/electronics", element: <Electronics /> },
+  { path: "/fashion", element: <Fashion /> },
+  { path: "/grocery", element: <Grocery /> },
+  { path: "/category/:category", element: <CategoryPage /> },
+  { path: "/category/:category/:subcategory", element: <CategoryPage /> },
+  { path: "/product/:id", element: <ProductPage /> },
+  { path: "/community", element: <SupplierApplicationForm /> },
+  { path: "/cart", element: <Cart /> },
 ];
 
 // ------------------ FALLBACK ------------------

@@ -20,6 +20,11 @@ const productSchema = new mongoose.Schema(
       required: true,
       min: [0, "Price cannot be negative"],
     },
+    oldPrice: {
+      type: Number,
+      min: [0, "Old price cannot be negative"],
+      default: null, // ✅ added for discounts
+    },
     stock: {
       type: Number,
       default: null, // for order-on-demand
@@ -54,15 +59,13 @@ const productSchema = new mongoose.Schema(
     color: { type: String },
     size: { type: String },
 
-    // 🔥 Promotions
-    isFlashSale: { type: Boolean, default: false },
-    flashSaleEndDate: { type: Date },
-
-    isDealOfWeek: { type: Boolean, default: false },
-    dealEndDate: { type: Date },
-
-    isNewArrival: { type: Boolean, default: false },
-    newArrivalExpiry: { type: Date },
+    // 🔥 Homepage Sections
+    sections: [
+      {
+        type: String,
+        enum: ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"],
+      },
+    ],
 
     // 📦 Logistics Information
     weight: { type: Number }, // in kg

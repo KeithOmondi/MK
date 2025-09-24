@@ -4,6 +4,7 @@ import { uploadToCloudinary, deleteFromCloudinary } from "../utils/uploadToCloud
 import Supplier from "../models/Supplier.js";
 import Category from "../models/Category.js";
 
+
 // ==============================
 // @desc    Create product
 // @route   POST /api/products
@@ -15,17 +16,13 @@ export const createProduct = asyncHandler(async (req, res) => {
     description,
     category,
     price,
+    oldPrice, // 🆕
     stock,
     status: productStatus,
     brand,
     color,
     size,
-    isFlashSale,
-    flashSaleEndDate,
-    isDealOfWeek,
-    dealEndDate,
-    isNewArrival,
-    newArrivalExpiry,
+    sections,
     weight,
     dimensions,
     shippingRegions,
@@ -55,6 +52,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     description,
     category,
     price,
+    oldPrice: oldPrice ?? null, // 🆕 safe assignment
     stock,
     brand,
     color,
@@ -62,12 +60,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     images: imageUrls,
     supplier: supplier ? supplier._id : null,
     status: productStatus || "active",
-    isFlashSale,
-    flashSaleEndDate,
-    isDealOfWeek,
-    dealEndDate,
-    isNewArrival,
-    newArrivalExpiry,
+    sections: sections ? (Array.isArray(sections) ? sections : [sections]) : [],
     weight,
     dimensions,
     shippingRegions: shippingRegions ? shippingRegions.split(",") : [],
@@ -87,6 +80,78 @@ export const createProduct = asyncHandler(async (req, res) => {
 
   res.status(201).json(createdProduct);
 });
+
+// ==============================
+// @desc    Update product
+// @route   PUT /api/products/:id
+// @access  Private (Admin/Supplier)
+// ==============================
+export const updateProduct = asyncHandler(async (req, res) => {
+  const {
+    name,
+    description,
+    category,
+    price,
+    oldPrice, // 🆕
+    stock,
+    status: productStatus,
+    brand,
+    color,
+    size,
+    sections,
+    weight,
+    dimensions,
+    shippingRegions,
+    deliveryTime,
+    freeShipping,
+    warehouseLocation,
+    returnPolicy,
+    warranty,
+  } = req.body;
+
+  const product = await Product.findById(req.params.id);
+  if (!product) {
+    res.status(404);
+    throw new Error("Product not found");
+  }
+
+  product.name = name || product.name;
+  product.description = description || product.description;
+  product.category = category || product.category;
+  product.price = price ?? product.price;
+  product.oldPrice = oldPrice ?? product.oldPrice; // 🆕
+  product.stock = stock ?? product.stock;
+  product.status = productStatus || product.status;
+
+  product.brand = brand || product.brand;
+  product.color = color || product.color;
+  product.size = size || product.size;
+  product.sections = sections
+    ? (Array.isArray(sections) ? sections : [sections])
+    : product.sections;
+
+  product.weight = weight ?? product.weight;
+  product.dimensions = dimensions || product.dimensions;
+  product.shippingRegions = shippingRegions
+    ? shippingRegions.split(",")
+    : product.shippingRegions;
+  product.deliveryTime = deliveryTime || product.deliveryTime;
+  product.freeShipping = freeShipping ?? product.freeShipping;
+  product.warehouseLocation = warehouseLocation || product.warehouseLocation;
+  product.returnPolicy = returnPolicy || product.returnPolicy;
+  product.warranty = warranty || product.warranty;
+
+  if (req.files?.length > 0) {
+    const uploadResults = await Promise.all(
+      req.files.map((file) => uploadToCloudinary(file.buffer))
+    );
+    product.images = [...product.images, ...uploadResults];
+  }
+
+  const updatedProduct = await product.save();
+  res.json(updatedProduct);
+});
+
 // ==============================
 // @desc    Get products (all, filtered, paginated, or by slug)
 // @route   GET /api/products
@@ -96,7 +161,7 @@ export const getProducts = asyncHandler(async (req, res) => {
   const pageSize = Number(req.query.limit) || 10;
   const page = Number(req.query.page) || 1;
 
-  const { parentSlug, childSlug } = req.params; // ✅ FIXED: params instead of query
+  const { parentSlug, childSlug } = req.params;
 
   // keyword search
   const keyword = req.query.keyword
@@ -106,14 +171,12 @@ export const getProducts = asyncHandler(async (req, res) => {
   let categoryFilter = {};
 
   if (parentSlug) {
-    // find parent
     const parent = await Category.findOne({ slug: parentSlug, parentCategory: null });
     if (!parent) {
       return res.json({ products: [], page: 1, pages: 1, total: 0 });
     }
 
     if (childSlug) {
-      // find child inside parent
       const child = await Category.findOne({
         slug: childSlug,
         parentCategory: parent._id,
@@ -123,7 +186,6 @@ export const getProducts = asyncHandler(async (req, res) => {
       }
       categoryFilter = { category: child._id };
     } else {
-      // all children of parent
       const children = await Category.find({ parentCategory: parent._id });
       categoryFilter = { category: { $in: children.map((c) => c._id) } };
     }
@@ -136,7 +198,10 @@ export const getProducts = asyncHandler(async (req, res) => {
   const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : Number.MAX_SAFE_INTEGER;
   const priceFilter = { price: { $gte: minPrice, $lte: maxPrice } };
 
-  const filter = { ...keyword, ...categoryFilter, ...priceFilter };
+  // section filter
+  const sectionFilter = req.query.section ? { sections: req.query.section } : {};
+
+  const filter = { ...keyword, ...categoryFilter, ...priceFilter, ...sectionFilter };
 
   // sorting
   let sort = {};
@@ -185,84 +250,7 @@ export const getProductById = asyncHandler(async (req, res) => {
   res.json(product);
 });
 
-// ==============================
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Private (Admin/Supplier)
-// ==============================
-export const updateProduct = asyncHandler(async (req, res) => {
-  const {
-    name,
-    description,
-    category,
-    price,
-    stock,
-    status: productStatus,
-    brand,
-    color,
-    size,
-    isFlashSale,
-    flashSaleEndDate,
-    isDealOfWeek,
-    dealEndDate,
-    isNewArrival,
-    newArrivalExpiry,
-    weight,
-    dimensions,
-    shippingRegions,
-    deliveryTime,
-    freeShipping,
-    warehouseLocation,
-    returnPolicy,
-    warranty,
-  } = req.body;
 
-  const product = await Product.findById(req.params.id);
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
-  }
-
-  product.name = name || product.name;
-  product.description = description || product.description;
-  product.category = category || product.category;
-  product.price = price || product.price;
-  product.stock = stock ?? product.stock;
-  product.status = productStatus || product.status;
-
-  // 🆕 brand, color, size
-  product.brand = brand || product.brand;
-  product.color = color || product.color;
-  product.size = size || product.size;
-
-  product.isFlashSale = isFlashSale ?? product.isFlashSale;
-  product.flashSaleEndDate = flashSaleEndDate || product.flashSaleEndDate;
-  product.isDealOfWeek = isDealOfWeek ?? product.isDealOfWeek;
-  product.dealEndDate = dealEndDate || product.dealEndDate;
-  product.isNewArrival = isNewArrival ?? product.isNewArrival;
-  product.newArrivalExpiry = newArrivalExpiry || product.newArrivalExpiry;
-
-  product.weight = weight ?? product.weight;
-  product.dimensions = dimensions || product.dimensions;
-  product.shippingRegions = shippingRegions
-    ? shippingRegions.split(",")
-    : product.shippingRegions;
-  product.deliveryTime = deliveryTime || product.deliveryTime;
-  product.freeShipping = freeShipping ?? product.freeShipping;
-  product.warehouseLocation = warehouseLocation || product.warehouseLocation;
-  product.returnPolicy = returnPolicy || product.returnPolicy;
-  product.warranty = warranty || product.warranty;
-
-  if (req.files?.length > 0) {
-    const uploadResults = await Promise.all(
-      req.files.map((file) => uploadToCloudinary(file.buffer))
-    );
-    product.images = [...product.images, ...uploadResults];
-  }
-
-  const updatedProduct = await product.save();
-  res.json(updatedProduct);
-});
 
 // ==============================
 // @desc    Delete product
@@ -313,25 +301,15 @@ export const deleteProductImage = asyncHandler(async (req, res) => {
 // @access  Public
 // ==============================
 export const getHomepageProducts = asyncHandler(async (req, res) => {
-  const now = new Date();
+  const sections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
 
-  const flashSales = await Product.find({
-    isFlashSale: true,
-    flashSaleEndDate: { $gte: now },
-    status: "active",
-  }).limit(10);
+  const results = {};
+  for (const section of sections) {
+    results[section] = await Product.find({
+      sections: section,
+      status: "active",
+    }).limit(10);
+  }
 
-  const deals = await Product.find({
-    isDealOfWeek: true,
-    dealEndDate: { $gte: now },
-    status: "active",
-  }).limit(10);
-
-  const newArrivals = await Product.find({
-    isNewArrival: true,
-    newArrivalExpiry: { $gte: now },
-    status: "active",
-  }).limit(10);
-
-  res.json({ flashSales, deals, newArrivals });
+  res.json(results);
 });

@@ -1,30 +1,11 @@
 // src/pages/admin/AddProducts.tsx
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import type { RootState, AppDispatch } from "../../redux/store";
-import {
-  fetchProducts,
-  deleteProduct,
-  createProduct,
-} from "../../redux/slices/productSlice";
-import {
-  fetchCategories,
-  selectCategories,
-  selectCategoryLoading,
-  type Category,
-} from "../../redux/slices/categorySlice";
-import { MdDelete, MdEdit } from "react-icons/md";
+import type { AppDispatch, RootState } from "../../redux/store";
+import { createProduct } from "../../redux/slices/productSlice";
+import { fetchCategories } from "../../redux/slices/categorySlice";
 import { toast } from "react-toastify";
-import { useNavigate } from "react-router-dom";
-import {
-  FaBox,
-  FaDollarSign,
-  FaTag,
-  FaCubes,
-  FaEye,
-  FaTrademark,
-} from "react-icons/fa";
-import { RiListCheck2, RiAddBoxFill } from "react-icons/ri";
+import { FaPlusCircle, FaRegFileImage } from "react-icons/fa";
 
 // ==========================
 // Types
@@ -32,63 +13,66 @@ import { RiListCheck2, RiAddBoxFill } from "react-icons/ri";
 interface ProductFormData {
   name: string;
   description: string;
-  category: string; // ✅ backend expects "category"
-  brand: string; // ✅ NEW FIELD
+  category: string;
+  brand?: string;
   price: number;
-  stock: number;
+  oldPrice?: number;
+  stock?: number;
   status: "active" | "inactive" | "draft";
+
+  color?: string;
+  size?: string;
+  material?: string;
+
+  warranty?: string;
+  modelNumber?: string;
+  sku?: string;
+
   isFlashSale: boolean;
-  flashSaleEndDate: string;
+  flashSaleEndDate?: string;
   isDealOfWeek: boolean;
-  dealEndDate: string;
+  dealEndDate?: string;
   isNewArrival: boolean;
-  newArrivalExpiry: string;
-  weight: number;
-  dimensions: string;
-  shippingMethods: string;
-  deliveryTime: string;
-  warehouseLocation: string;
+  newArrivalExpiry?: string;
 }
 
+// ==========================
+// Initial State
+// ==========================
 const initialFormState: ProductFormData = {
   name: "",
   description: "",
   category: "",
   brand: "",
   price: 0,
-  stock: 0,
+  oldPrice: undefined,
+  stock: undefined,
   status: "active",
+
+  color: "",
+  size: "",
+  material: "",
+
+  warranty: "",
+  modelNumber: "",
+  sku: "",
+
   isFlashSale: false,
   flashSaleEndDate: "",
   isDealOfWeek: false,
   dealEndDate: "",
   isNewArrival: false,
   newArrivalExpiry: "",
-  weight: 0,
-  dimensions: "",
-  shippingMethods: "",
-  deliveryTime: "",
-  warehouseLocation: "",
 };
 
 const AddProducts: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const navigate = useNavigate();
-
-  const { products, loading, error } = useSelector(
-    (state: RootState) => state.products
-  );
-  const categories = useSelector(selectCategories);
-  const categoryLoading = useSelector(selectCategoryLoading);
+  const categories = useSelector((state: RootState) => state.categories.categories);
 
   const [formData, setFormData] = useState<ProductFormData>(initialFormState);
-  const [images, setImages] = useState<FileList | null>(null);
+  const [images, setImages] = useState<File[]>([]);
 
-  // ==========================
-  // Fetch products & categories
-  // ==========================
   useEffect(() => {
-    dispatch(fetchProducts({}));
     dispatch(fetchCategories());
   }, [dispatch]);
 
@@ -96,9 +80,7 @@ const AddProducts: React.FC = () => {
   // Handlers
   // ==========================
   const handleInputChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -109,336 +91,227 @@ const AddProducts: React.FC = () => {
     setFormData((prev) => ({ ...prev, [name]: checked }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setImages(e.target.files);
-  };
-
-  const resetForm = () => {
-    setFormData(initialFormState);
-    setImages(null);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) setImages(Array.from(e.target.files));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!formData.category) {
-      toast.error("❌ Please select a category");
-      return;
-    }
-
-    if (!formData.brand) {
-      toast.error("❌ Please enter a brand");
-      return;
-    }
-
+    const payload = { ...formData, images };
     try {
-      const fd = new FormData();
-
-      // ✅ Append all form fields
-      Object.entries(formData).forEach(([key, value]) => {
-        fd.append(key, String(value));
-      });
-
-      // ✅ Append images
-      if (images) {
-        Array.from(images).forEach((file) => fd.append("images", file));
-      }
-
-      await dispatch(createProduct(fd)).unwrap();
-      toast.success("✅ Product created successfully");
-
-      resetForm();
-      dispatch(fetchProducts({}));
-    } catch (err) {
-      console.error(err);
-      toast.error("❌ Failed to create product");
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this product?")) return;
-    try {
-      await dispatch(deleteProduct(id)).unwrap();
-      toast.success("🗑️ Product deleted successfully");
+      await dispatch(createProduct(payload)).unwrap();
+      toast.success("✅ Product added successfully!");
+      setFormData(initialFormState);
+      setImages([]);
     } catch {
-      toast.error("❌ Failed to delete product");
+      toast.error("❌ Failed to add product.");
     }
-  };
-
-  const handleEdit = (id: string) => navigate(`/admin/products/edit/${id}`);
-
-  // ==========================
-  // Helpers
-  // ==========================
-  const getCategoryHierarchy = (catId: string): string => {
-    const category = categories.find((c) => c._id === catId);
-    if (!category) return "Uncategorized";
-
-    const buildHierarchy = (c: Category): string => {
-      if (c.parentCategory && typeof c.parentCategory !== "string") {
-        return buildHierarchy(c.parentCategory as Category) + " > " + c.name;
-      }
-      return c.name;
-    };
-
-    return buildHierarchy(category);
-  };
-
-  const renderCategoryOptions = (
-    cats: Category[] | undefined,
-    level = 0,
-    parentId: string | null = null
-  ): React.ReactElement[] => {
-    if (!cats || cats.length === 0) return [];
-
-    return cats
-      .filter((c) =>
-        parentId === null
-          ? !c.parentCategory
-          : typeof c.parentCategory === "string"
-          ? c.parentCategory === parentId
-          : c.parentCategory?._id === parentId
-      )
-      .flatMap((cat) => [
-        <option key={cat._id} value={cat._id}>
-          {"\u00A0".repeat(level * 4)}
-          {cat.name}
-        </option>,
-        ...renderCategoryOptions(cats, level + 1, cat._id),
-      ]);
   };
 
   // ==========================
   // Render
   // ==========================
   return (
-    <div className="p-6 md:p-10 bg-gray-100 min-h-screen">
-      <h1 className="text-3xl font-extrabold text-gray-800 mb-8 flex items-center">
-        <RiListCheck2 className="mr-3 text-blue-600" /> Manage Products
+    <div className="p-6 md:p-10 bg-gray-50 min-h-screen">
+      <h1 className="text-3xl font-extrabold text-gray-900 mb-8">
+        Add New Product
       </h1>
 
-      {/* Add Product Form */}
-      <div className="bg-white shadow-xl rounded-2xl p-6 md:p-8 mb-10 border border-gray-200">
-        <h2 className="text-2xl font-bold text-gray-700 mb-6 flex items-center">
-          <RiAddBoxFill className="mr-2 text-green-600" /> Add New Product
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+        <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="relative">
-              <FaBox className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="space-y-4">
               <input
                 type="text"
                 name="name"
                 placeholder="Product Name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
                 required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
               />
-            </div>
-            <div className="relative">
-              <FaTrademark className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <textarea
+                name="description"
+                placeholder="Product Description"
+                value={formData.description}
+                onChange={handleInputChange}
+                rows={4}
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
+              />
+              <select
+                name="category"
+                value={formData.category}
+                onChange={handleInputChange}
+                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
+              >
+                <option value="">Select Category</option>
+                {categories.map((cat) => (
+                  <option key={cat._id} value={cat._id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
                 name="brand"
                 placeholder="Brand"
-                value={formData.brand}
+                value={formData.brand || ""}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
-                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
               />
             </div>
-            <div className="relative">
-              <FaDollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+
+            {/* Pricing & Stock */}
+            <div className="space-y-4">
               <input
                 type="number"
                 name="price"
                 placeholder="Price"
                 value={formData.price}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
-                required
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
               />
-            </div>
-            <div className="relative">
-              <FaCubes className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="number"
+                name="oldPrice"
+                placeholder="Old Price"
+                value={formData.oldPrice || ""}
+                onChange={handleInputChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
+              />
               <input
                 type="number"
                 name="stock"
-                placeholder="Stock"
-                value={formData.stock}
+                placeholder="Stock Quantity"
+                value={formData.stock || ""}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
               />
             </div>
-            <div className="relative">
-              <FaEye className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="draft">Draft</option>
-              </select>
-            </div>
           </div>
-          <div className="relative">
-            <FaTag className="absolute left-3 top-3 text-gray-400" />
-            <textarea
-              name="description"
-              placeholder="Description"
-              value={formData.description}
+
+          {/* Variations & Extra Info */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <input
+              type="text"
+              name="color"
+              placeholder="Color"
+              value={formData.color || ""}
               onChange={handleInputChange}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg min-h-[100px]"
-              required
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
+            />
+            <input
+              type="text"
+              name="size"
+              placeholder="Size"
+              value={formData.size || ""}
+              onChange={handleInputChange}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
+            />
+            <input
+              type="text"
+              name="material"
+              placeholder="Material"
+              value={formData.material || ""}
+              onChange={handleInputChange}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 transition-colors"
             />
           </div>
-          <div className="relative">
-            <RiListCheck2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <select
-              name="category"
-              value={formData.category}
-              onChange={handleInputChange}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg"
-              required
-            >
-              <option value="">-- Select Category --</option>
-              {categoryLoading ? (
-                <option disabled>Loading categories...</option>
-              ) : categories && categories.length > 0 ? (
-                renderCategoryOptions(categories)
-              ) : (
-                <option disabled>No categories available</option>
+
+          {/* Homepage Flags */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  name="isFlashSale"
+                  checked={formData.isFlashSale}
+                  onChange={handleCheckboxChange}
+                  className="form-checkbox"
+                />
+                <span>Flash Sale</span>
+              </label>
+              {formData.isFlashSale && (
+                <input
+                  type="date"
+                  name="flashSaleEndDate"
+                  value={formData.flashSaleEndDate || ""}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full border px-2 py-1 rounded"
+                />
               )}
-            </select>
+            </div>
+            <div>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  name="isDealOfWeek"
+                  checked={formData.isDealOfWeek}
+                  onChange={handleCheckboxChange}
+                  className="form-checkbox"
+                />
+                <span>Deal of the Week</span>
+              </label>
+              {formData.isDealOfWeek && (
+                <input
+                  type="date"
+                  name="dealEndDate"
+                  value={formData.dealEndDate || ""}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full border px-2 py-1 rounded"
+                />
+              )}
+            </div>
+            <div>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  name="isNewArrival"
+                  checked={formData.isNewArrival}
+                  onChange={handleCheckboxChange}
+                  className="form-checkbox"
+                />
+                <span>New Arrival</span>
+              </label>
+              {formData.isNewArrival && (
+                <input
+                  type="date"
+                  name="newArrivalExpiry"
+                  value={formData.newArrivalExpiry || ""}
+                  onChange={handleInputChange}
+                  className="mt-1 w-full border px-2 py-1 rounded"
+                />
+              )}
+            </div>
           </div>
 
           {/* Image Upload */}
-          <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
-            <p className="text-gray-500 mb-2">
-              Drag and drop images here, or click to select files.
-            </p>
+          <div>
+            <label htmlFor="image-upload" className="flex items-center space-x-2 cursor-pointer border-2 border-dashed px-4 py-2 rounded hover:border-green-500">
+              <FaRegFileImage /> <span>Upload Images</span>
+            </label>
             <input
+              id="image-upload"
               type="file"
               multiple
-              accept="image/*"
-              onChange={handleFileChange}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={handleImageUpload}
+              className="hidden"
             />
+            <div className="mt-2 text-sm text-gray-500">
+              {images.length > 0 ? `${images.length} file(s) selected` : "No files selected."}
+            </div>
           </div>
-
-          {/* Logistics + Promotions kept same as before */}
-          {/* ... */}
 
           <button
             type="submit"
-            className="w-full px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700"
+            className="flex items-center justify-center px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700 mt-4"
           >
-            Add Product
+            <FaPlusCircle className="mr-2" /> Add Product
           </button>
         </form>
-      </div>
-
-      {/* Product List */}
-      <div className="bg-white shadow-xl rounded-2xl p-6 md:p-8 overflow-x-auto border border-gray-200">
-        {loading ? (
-          <p className="text-center py-10 text-gray-500">Loading products...</p>
-        ) : error ? (
-          <p className="text-center text-red-600 py-10">❌ {error}</p>
-        ) : (
-          <table className="min-w-full table-auto border-separate border-spacing-y-4">
-            <thead>
-              <tr className="text-gray-500 uppercase text-sm leading-normal">
-                <th className="px-4 py-3 text-left">Image</th>
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Brand</th>
-                <th className="px-4 py-3 text-left">Category</th>
-                <th className="px-4 py-3 text-left">Price</th>
-                <th className="px-4 py-3 text-left">Stock</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Warehouse</th>
-                <th className="px-4 py-3 text-left">Date</th>
-                <th className="px-4 py-3 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="text-gray-600 text-sm font-light">
-              {products.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-10">
-                    No products found.
-                  </td>
-                </tr>
-              ) : (
-                products.map((product) => (
-                  <tr
-                    key={product._id}
-                    className="bg-white shadow-md rounded-lg mb-4 hover:shadow-lg"
-                  >
-                    <td className="px-4 py-3">
-                      <img
-                        src={product.images?.[0]?.url || "/placeholder.png"}
-                        alt={product.name || "Product"}
-                        className="w-16 h-16 object-cover rounded-md"
-                      />
-                    </td>
-                    <td className="px-4 py-3 font-medium">{product.name}</td>
-                    <td className="px-4 py-3">{product.brand ?? "N/A"}</td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {getCategoryHierarchy(
-                        typeof product.category === "string"
-                          ? product.category
-                          : product.category?._id ?? ""
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      ${Number(product.price).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">{product.stock ?? 0}</td>
-                    <td className="px-4 py-3">
-                      {product.status === "active" ? (
-                        <span className="px-2 py-1 text-xs font-semibold text-green-800 bg-green-200 rounded-full">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 text-xs font-semibold text-red-800 bg-red-200 rounded-full">
-                          Inactive
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {typeof product.warehouseLocation === "string"
-                        ? product.warehouseLocation
-                        : "N/A"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
-                      {product.createdAt
-                        ? new Date(product.createdAt).toLocaleDateString()
-                        : "N/A"}
-                    </td>
-                    <td className="px-4 py-3 text-center space-x-2">
-                      <button
-                        onClick={() => handleEdit(product._id)}
-                        className="p-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-full"
-                      >
-                        <MdEdit size={18} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(product._id)}
-                        className="p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-full"
-                      >
-                        <MdDelete size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        )}
       </div>
     </div>
   );

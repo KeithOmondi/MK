@@ -9,7 +9,8 @@ import { fetchHomepageProducts } from "../../redux/slices/productSlice";
 
 const FlashSales: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { flashSales } = useSelector((state: RootState) => state.products.homepage);
+  const homepage = useSelector((state: RootState) => state.products.homepage);
+  const flashSales = homepage?.flashSales ?? []; // ✅ safe default
   const loading = useSelector((state: RootState) => state.products.loading);
   const error = useSelector((state: RootState) => state.products.error);
 
@@ -21,10 +22,18 @@ const FlashSales: React.FC = () => {
     <section className="bg-[#eee] py-12 px-4 sm:px-8 lg:px-16">
       <div className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-6">
-          <h2 className="text-3xl font-bold text-gray-900">
-            ⚡ Flash Sales
-          </h2>
-          <Countdown targetDate="2025-09-30T23:59:59" />
+          <h2 className="text-3xl font-bold text-gray-900">⚡ Flash Sales</h2>
+          {/* Global countdown (next upcoming end date) */}
+          {flashSales.length > 0 && (
+            <Countdown
+              targetDate={
+                flashSales
+                  .map((p) => p.flashSaleEndDate)
+                  .filter(Boolean)
+                  .sort()[0] // earliest upcoming expiry
+              }
+            />
+          )}
         </div>
 
         <Link
@@ -38,7 +47,9 @@ const FlashSales: React.FC = () => {
       <div className="flex gap-6 overflow-x-auto scrollbar-hide pb-4">
         {loading && <p>Loading flash sales...</p>}
         {error && <p className="text-red-600">{error}</p>}
-        {!loading && !error && flashSales.length === 0 && <p>No flash sales available</p>}
+        {!loading && !error && flashSales.length === 0 && (
+          <p>No flash sales available</p>
+        )}
 
         {flashSales.map((product) => (
           <Link
@@ -54,7 +65,12 @@ const FlashSales: React.FC = () => {
             <h3 className="mt-2 text-sm font-semibold text-gray-800 truncate">
               {product.name}
             </h3>
-            <p className="text-red-600 font-bold">${product.price}</p>
+            <p className="text-red-600 font-bold">Ksh {product.price}</p>
+
+            {/* Per-product countdown */}
+            {product.flashSaleEndDate && (
+              <Countdown targetDate={product.flashSaleEndDate} />
+            )}
           </Link>
         ))}
       </div>
