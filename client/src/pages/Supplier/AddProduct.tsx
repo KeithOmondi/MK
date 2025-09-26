@@ -28,12 +28,10 @@ interface ProductFormData {
   modelNumber?: string;
   sku?: string;
 
+  // Flags (mapped to sections)
   isFlashSale: boolean;
-  flashSaleEndDate?: string;
   isDealOfWeek: boolean;
-  dealEndDate?: string;
   isNewArrival: boolean;
-  newArrivalExpiry?: string;
 }
 
 // ==========================
@@ -58,11 +56,8 @@ const initialFormState: ProductFormData = {
   sku: "",
 
   isFlashSale: false,
-  flashSaleEndDate: "",
   isDealOfWeek: false,
-  dealEndDate: "",
   isNewArrival: false,
-  newArrivalExpiry: "",
 };
 
 const AddProducts: React.FC = () => {
@@ -97,9 +92,33 @@ const AddProducts: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...formData, images };
+
+    // Build sections array
+    const sections: string[] = [];
+    if (formData.isFlashSale) sections.push("FlashSales");
+    if (formData.isDealOfWeek) sections.push("BestDeals");
+    if (formData.isNewArrival) sections.push("NewArrivals");
+
+    // Prepare FormData for backend
+    const data = new FormData();
+    Object.entries(formData).forEach(([key, value]) => {
+      if (
+        value !== undefined &&
+        value !== "" &&
+        typeof value !== "boolean" // skip flags, we mapped them
+      ) {
+        data.append(key, String(value));
+      }
+    });
+
+    // Append sections (array)
+    sections.forEach((section) => data.append("sections", section));
+
+    // Append images
+    images.forEach((img) => data.append("images", img));
+
     try {
-      await dispatch(createProduct(payload)).unwrap();
+      await dispatch(createProduct(data)).unwrap();
       toast.success("✅ Product added successfully!");
       setFormData(initialFormState);
       setImages([]);
@@ -221,76 +240,46 @@ const AddProducts: React.FC = () => {
             />
           </div>
 
-          {/* Homepage Flags */}
+          {/* Homepage Sections */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  name="isFlashSale"
-                  checked={formData.isFlashSale}
-                  onChange={handleCheckboxChange}
-                  className="form-checkbox"
-                />
-                <span>Flash Sale</span>
-              </label>
-              {formData.isFlashSale && (
-                <input
-                  type="date"
-                  name="flashSaleEndDate"
-                  value={formData.flashSaleEndDate || ""}
-                  onChange={handleInputChange}
-                  className="mt-1 w-full border px-2 py-1 rounded"
-                />
-              )}
-            </div>
-            <div>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  name="isDealOfWeek"
-                  checked={formData.isDealOfWeek}
-                  onChange={handleCheckboxChange}
-                  className="form-checkbox"
-                />
-                <span>Deal of the Week</span>
-              </label>
-              {formData.isDealOfWeek && (
-                <input
-                  type="date"
-                  name="dealEndDate"
-                  value={formData.dealEndDate || ""}
-                  onChange={handleInputChange}
-                  className="mt-1 w-full border px-2 py-1 rounded"
-                />
-              )}
-            </div>
-            <div>
-              <label className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  name="isNewArrival"
-                  checked={formData.isNewArrival}
-                  onChange={handleCheckboxChange}
-                  className="form-checkbox"
-                />
-                <span>New Arrival</span>
-              </label>
-              {formData.isNewArrival && (
-                <input
-                  type="date"
-                  name="newArrivalExpiry"
-                  value={formData.newArrivalExpiry || ""}
-                  onChange={handleInputChange}
-                  className="mt-1 w-full border px-2 py-1 rounded"
-                />
-              )}
-            </div>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                name="isFlashSale"
+                checked={formData.isFlashSale}
+                onChange={handleCheckboxChange}
+                className="form-checkbox"
+              />
+              <span>Flash Sale</span>
+            </label>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                name="isDealOfWeek"
+                checked={formData.isDealOfWeek}
+                onChange={handleCheckboxChange}
+                className="form-checkbox"
+              />
+              <span>Deal of the Week</span>
+            </label>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                name="isNewArrival"
+                checked={formData.isNewArrival}
+                onChange={handleCheckboxChange}
+                className="form-checkbox"
+              />
+              <span>New Arrival</span>
+            </label>
           </div>
 
           {/* Image Upload */}
           <div>
-            <label htmlFor="image-upload" className="flex items-center space-x-2 cursor-pointer border-2 border-dashed px-4 py-2 rounded hover:border-green-500">
+            <label
+              htmlFor="image-upload"
+              className="flex items-center space-x-2 cursor-pointer border-2 border-dashed px-4 py-2 rounded hover:border-green-500"
+            >
               <FaRegFileImage /> <span>Upload Images</span>
             </label>
             <input

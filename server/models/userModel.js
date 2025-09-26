@@ -73,6 +73,14 @@ const userSchema = new mongoose.Schema(
       publicId: { type: String },
     },
 
+    recentlyViewed: [
+  {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+  },
+],
+
+
     // Links
     supplierProfile: {
       type: mongoose.Schema.Types.ObjectId,

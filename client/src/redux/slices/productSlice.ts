@@ -18,45 +18,39 @@ export interface Category {
   parentCategory?: string | null;
 }
 
+export interface Rating {
+  userId: string;
+  rating: number;
+  review?: string;
+  createdAt: string;
+}
+
 export interface Product {
   _id: string;
   name: string;
   description: string;
-  category: string | Category;
+  category: Category;
 
-  // 🏷️ Commercial
   price: number;
-  oldPrice?: number | null; // ✅ added
+  oldPrice?: number | null;
   stock: number | null;
   brand?: string;
   tags?: string[];
   status: "active" | "inactive" | "draft";
 
-  // 🎨 Variations
   color?: string;
   size?: string;
   material?: string;
 
-  // 💡 Extra info
   warranty?: string;
   modelNumber?: string;
   sku?: string;
 
-  // 🖼️ Media
   images: Image[];
 
-  // 👤 Supplier
   supplier: string;
+  ratings: Rating[];
 
-  // ⭐ Ratings / Reviews
-  ratings: {
-    userId: string;
-    rating: number;
-    review?: string;
-    createdAt: string;
-  }[];
-
-  // 🔥 Promotions (legacy flags — still supported if needed)
   isFlashSale: boolean;
   flashSaleEndDate?: string;
   isDealOfWeek: boolean;
@@ -64,7 +58,6 @@ export interface Product {
   isNewArrival: boolean;
   newArrivalExpiry?: string;
 
-  // 🚚 Logistics
   warehouseLocation?: {
     address: string;
     city: string;
@@ -108,7 +101,7 @@ interface ProductState {
     flashSales: Product[];
     deals: Product[];
     newArrivals: Product[];
-    topTrending: Product[]; // ✅ added
+    topTrending: Product[];
   };
 }
 
@@ -127,7 +120,7 @@ const initialState: ProductState = {
     flashSales: [],
     deals: [],
     newArrivals: [],
-    topTrending: [], // ✅ init
+    topTrending: [],
   },
 };
 
@@ -147,11 +140,26 @@ const toFormData = (payload: any): FormData => {
   return formData;
 };
 
+// Utility to sync a product into homepage sections
+const syncHomepageSections = (homepage: ProductState["homepage"], product: Product) => {
+  // Remove product from all sections first
+  homepage.flashSales = homepage.flashSales.filter((p) => p._id !== product._id);
+  homepage.deals = homepage.deals.filter((p) => p._id !== product._id);
+  homepage.newArrivals = homepage.newArrivals.filter((p) => p._id !== product._id);
+  homepage.topTrending = homepage.topTrending.filter((p) => p._id !== product._id);
+
+  // Re-add if flags are set
+  if (product.isFlashSale) homepage.flashSales.push(product);
+  if (product.isDealOfWeek) homepage.deals.push(product);
+  if (product.isNewArrival) homepage.newArrivals.push(product);
+
+  // Always in trending
+  homepage.topTrending.unshift(product);
+};
+
 // ==========================
 // Async Thunks
 // ==========================
-
-// Create Product
 export const createProduct = createAsyncThunk<Product, any>(
   "products/create",
   async (payload, { rejectWithValue }) => {
@@ -160,14 +168,13 @@ export const createProduct = createAsyncThunk<Product, any>(
       const { data } = await api.post(`/products/create`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return data;
+      return data as Product;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Fetch all products
 export const fetchProducts = createAsyncThunk<
   ProductListResponse,
   {
@@ -194,7 +201,6 @@ export const fetchProducts = createAsyncThunk<
   }
 });
 
-// Fetch products by category
 export const fetchProductsByCategory = createAsyncThunk<
   ProductListResponse,
   { parentSlug: string; childSlug?: string; page?: number; limit?: number }
@@ -210,7 +216,6 @@ export const fetchProductsByCategory = createAsyncThunk<
   }
 });
 
-// Homepage
 export const fetchHomepageProducts = createAsyncThunk<
   { flashSales: Product[]; deals: Product[]; newArrivals: Product[]; topTrending: Product[] }
 >("products/fetchHomepage", async (_, { rejectWithValue }) => {
@@ -222,20 +227,18 @@ export const fetchHomepageProducts = createAsyncThunk<
   }
 });
 
-// Single product
 export const fetchProductById = createAsyncThunk<Product, string>(
   "products/fetchById",
   async (id, { rejectWithValue }) => {
     try {
       const { data } = await api.get(`/products/get/${id}`);
-      return data;
+      return data as Product;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Update
 export const updateProduct = createAsyncThunk<Product, { id: string; payload: any }>(
   "products/update",
   async ({ id, payload }, { rejectWithValue }) => {
@@ -244,14 +247,13 @@ export const updateProduct = createAsyncThunk<Product, { id: string; payload: an
       const { data } = await api.put(`/products/update/${id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      return data;
+      return data as Product;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Delete
 export const deleteProduct = createAsyncThunk<{ message: string; id: string }, string>(
   "products/delete",
   async (id, { rejectWithValue }) => {
@@ -264,13 +266,12 @@ export const deleteProduct = createAsyncThunk<{ message: string; id: string }, s
   }
 );
 
-// Delete Image
 export const deleteProductImage = createAsyncThunk<Product, { productId: string; publicId: string }>(
   "products/deleteImage",
   async ({ productId, publicId }, { rejectWithValue }) => {
     try {
       const { data } = await api.delete(`/products/delete/${productId}/images/${publicId}`);
-      return data.product;
+      return data.product as Product;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -298,7 +299,9 @@ const productSlice = createSlice({
       })
       .addCase(createProduct.fulfilled, (state, action: PayloadAction<Product>) => {
         state.loading = false;
-        state.products.push(action.payload);
+        const newProduct = action.payload;
+        state.products.push(newProduct);
+        syncHomepageSections(state.homepage, newProduct);
       })
       .addCase(createProduct.rejected, (state, action) => {
         state.loading = false;
@@ -306,10 +309,6 @@ const productSlice = createSlice({
       })
 
       // Fetch All
-      .addCase(fetchProducts.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
       .addCase(fetchProducts.fulfilled, (state, action: PayloadAction<ProductListResponse>) => {
         state.loading = false;
         state.products = action.payload.products;
@@ -317,26 +316,14 @@ const productSlice = createSlice({
         state.pages = action.payload.pages;
         state.total = action.payload.total;
       })
-      .addCase(fetchProducts.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      })
 
       // Fetch By Category
-      .addCase(fetchProductsByCategory.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
       .addCase(fetchProductsByCategory.fulfilled, (state, action: PayloadAction<ProductListResponse>) => {
         state.loading = false;
         state.products = action.payload.products;
         state.page = action.payload.page;
         state.pages = action.payload.pages;
         state.total = action.payload.total;
-      })
-      .addCase(fetchProductsByCategory.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
       })
 
       // Homepage
@@ -345,39 +332,39 @@ const productSlice = createSlice({
       })
 
       // Single
-      .addCase(fetchProductById.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
       .addCase(fetchProductById.fulfilled, (state, action: PayloadAction<Product>) => {
         state.loading = false;
         state.product = action.payload;
-      })
-      .addCase(fetchProductById.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
       })
 
       // Update
       .addCase(updateProduct.fulfilled, (state, action: PayloadAction<Product>) => {
         state.loading = false;
-        state.products = state.products.map((p) =>
-          p._id === action.payload._id ? action.payload : p
-        );
-        state.product = action.payload;
+        const updated = action.payload;
+
+        // Update in list
+        state.products = state.products.map((p) => (p._id === updated._id ? updated : p));
+
+        // Update current
+        state.product = updated;
+
+        // Sync homepage sections with new flags
+        syncHomepageSections(state.homepage, updated);
       })
 
       // Delete
       .addCase(deleteProduct.fulfilled, (state, action) => {
         state.products = state.products.filter((p) => p._id !== action.payload.id);
+        state.homepage.flashSales = state.homepage.flashSales.filter((p) => p._id !== action.payload.id);
+        state.homepage.deals = state.homepage.deals.filter((p) => p._id !== action.payload.id);
+        state.homepage.newArrivals = state.homepage.newArrivals.filter((p) => p._id !== action.payload.id);
+        state.homepage.topTrending = state.homepage.topTrending.filter((p) => p._id !== action.payload.id);
       })
 
       // Delete Image
       .addCase(deleteProductImage.fulfilled, (state, action: PayloadAction<Product>) => {
         state.product = action.payload;
-        state.products = state.products.map((p) =>
-          p._id === action.payload._id ? action.payload : p
-        );
+        state.products = state.products.map((p) => (p._id === action.payload._id ? action.payload : p));
       });
   },
 });

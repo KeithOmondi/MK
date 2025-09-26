@@ -22,6 +22,7 @@ import supplierRouter from "./routes/supplierRouter.js";
 import analyticsRouter from "./routes/analyticsRouter.js";
 import chatRouter from "./routes/chatRouter.js";
 import paymentRouter from "./routes/paymentRouter.js";
+import recentlyViewedRouter from "./routes/recentlyViewedRouter.js"
 
 dotenv.config({ path: "./config/.env" });
 
@@ -64,6 +65,7 @@ app.use("/api/v1/suppliers", supplierRouter);
 app.use("/api/v1/analytics", analyticsRouter);
 app.use("/api/v1/chat", chatRouter, limiter);
 app.use("/api/v1/payments", paymentRouter);
+app.use("/api/v1/recently-viewed", recentlyViewedRouter);
 
 // ✅ Global error handler
 app.use(errorMiddleware);

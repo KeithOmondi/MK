@@ -7,7 +7,8 @@ import categoryReducer from "./slices/categorySlice";
 import paymentReducer from "./slices/paymentSlice";
 import chatReducer from "./slices/chatSlice";
 import analyticsReducer from "./slices/analyticsSlice";
-import cartReducer from "./slices/cartSlice"
+import cartReducer from "./slices/cartSlice";
+import recentlyViewedReducer from "./slices/recentlyViewedSlice"
 
 export const store = configureStore({
   reducer: {
@@ -19,7 +20,8 @@ export const store = configureStore({
      payment: paymentReducer,
      chat: chatReducer,
      analytics: analyticsReducer,
-     cart: cartReducer
+     cart: cartReducer,
+     recentlyViewed: recentlyViewedReducer
   },
 });
 

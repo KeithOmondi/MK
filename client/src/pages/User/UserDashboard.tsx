@@ -1,58 +1,63 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { MdInventory, MdAddBox, MdShoppingCart, MdAccountCircle } from "react-icons/md";
+import {
+  MdShoppingCart,
+  MdLocalShipping,
+  MdCancel,
+  MdReplay,
+} from "react-icons/md";
 
 const UserDashboard: React.FC = () => {
   return (
     <div className="p-6 bg-gray-100 min-h-screen">
-      <h1 className="text-3xl font-bold text-gray-800 mb-6">Supplier Dashboard</h1>
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">My Dashboard</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Manage Products */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* All Orders */}
         <Link
-          to="/supplier/products"
+          to="/user/orders"
           className="p-6 bg-white shadow rounded-lg hover:shadow-lg transition flex flex-col items-center text-center"
         >
-          <MdInventory className="text-blue-600" size={40} />
-          <h2 className="mt-4 text-lg font-semibold">Manage Products</h2>
+          <MdShoppingCart className="text-blue-600" size={40} />
+          <h2 className="mt-4 text-lg font-semibold">All Orders</h2>
           <p className="text-gray-600 text-sm mt-2">
-            View and update your listed products.
+            View and manage all your orders.
           </p>
         </Link>
 
-        {/* Add Product */}
+        {/* Delivered */}
         <Link
-          to="/supplier/products/add"
+          to="/user/orders/delivered"
           className="p-6 bg-white shadow rounded-lg hover:shadow-lg transition flex flex-col items-center text-center"
         >
-          <MdAddBox className="text-green-600" size={40} />
-          <h2 className="mt-4 text-lg font-semibold">Add Product</h2>
+          <MdLocalShipping className="text-green-600" size={40} />
+          <h2 className="mt-4 text-lg font-semibold">Delivered</h2>
           <p className="text-gray-600 text-sm mt-2">
-            Add new items to your catalog.
+            Check your successfully delivered orders.
           </p>
         </Link>
 
-        {/* Orders */}
+        {/* Cancelled */}
         <Link
-          to="/supplier/orders"
+          to="/user/orders/cancelled"
           className="p-6 bg-white shadow rounded-lg hover:shadow-lg transition flex flex-col items-center text-center"
         >
-          <MdShoppingCart className="text-purple-600" size={40} />
-          <h2 className="mt-4 text-lg font-semibold">Orders</h2>
+          <MdCancel className="text-red-600" size={40} />
+          <h2 className="mt-4 text-lg font-semibold">Cancelled</h2>
           <p className="text-gray-600 text-sm mt-2">
-            Track and manage customer orders.
+            Review orders you have cancelled.
           </p>
         </Link>
 
-        {/* Profile / Account Settings */}
+        {/* Returned */}
         <Link
-          to="/supplier/profile"
+          to="/user/orders/returned"
           className="p-6 bg-white shadow rounded-lg hover:shadow-lg transition flex flex-col items-center text-center"
         >
-          <MdAccountCircle className="text-orange-600" size={40} />
-          <h2 className="mt-4 text-lg font-semibold">My Profile</h2>
+          <MdReplay className="text-purple-600" size={40} />
+          <h2 className="mt-4 text-lg font-semibold">Returned</h2>
           <p className="text-gray-600 text-sm mt-2">
-            Update your personal and business info.
+            Manage items you have returned.
           </p>
         </Link>
       </div>

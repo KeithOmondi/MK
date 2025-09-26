@@ -29,12 +29,18 @@ import UserLayout from "../components/User/UserLayout";
 import UserDashboard from "../pages/User/UserDashboard";
 import Cart from "../components/Cart/Cart";
 import ManageProducts from "../pages/Supplier/ManageProducts";
+import MyOrders from "../pages/User/MyOrders";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
   { path: "/dashboard", element: (
     <UserLayout>
       <UserDashboard />
+    </UserLayout>
+  ) },
+  { path: "/user/orders", element: (
+    <UserLayout>
+      <MyOrders/>
     </UserLayout>
   ) },
   

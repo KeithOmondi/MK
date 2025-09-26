@@ -10,17 +10,22 @@ import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js"
 
 const router = express.Router();
 
-// ✅ Create order → typically a customer creates an order
+// ✅ Create order → Buyer creates an order
 router.post("/create", isAuthenticated, createOrder);
 
-// ✅ Get all orders → Admin & Supplier can see all, User can see own
-router.get("/get", isAuthenticated, isAuthorized("Admin", "Supplier"), getOrders);
+// ✅ Get all orders → logic handled in controller (Admin → all, Supplier → theirs, Buyer → own)
+router.get("/get", isAuthenticated, getOrders);
 
-// ✅ Get single order → User can see own, Admin/Supplier can see all
+// ✅ Get single order → Buyer can see own, Admin/Supplier can see all
 router.get("/get/:id", isAuthenticated, getOrderById);
 
-// ✅ Update order status → Admin or Supplier (for shipping) 
-router.put("/update/:id/status", isAuthenticated, isAuthorized("Admin", "Supplier"), updateOrderStatus);
+// ✅ Update order status → Admin or Supplier
+router.put(
+  "/update/:id/status",
+  isAuthenticated,
+  isAuthorized("Admin", "Supplier"),
+  updateOrderStatus
+);
 
 // ✅ Delete order → Admin only
 router.delete("/delete/:id", isAuthenticated, isAuthorized("Admin"), deleteOrder);

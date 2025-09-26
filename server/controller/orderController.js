@@ -1,14 +1,15 @@
-// controllers/orderController.js
+import asyncHandler from "express-async-handler";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Supplier from "../models/Supplier.js";
-import asyncHandler from "express-async-handler";
 
-// =========================
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private (Buyer)
-// =========================
+/**
+ * =========================
+ * @desc    Create new order
+ * @route   POST /api/orders/create
+ * @access  Private (Buyer)
+ * =========================
+ */
 export const createOrder = asyncHandler(async (req, res) => {
   const { items, supplier, deliveryDetails, paymentMethod } = req.body;
 
@@ -22,21 +23,20 @@ export const createOrder = asyncHandler(async (req, res) => {
     throw new Error("Payment method is required");
   }
 
-  // ✅ Validate supplier
+  // ✅ Validate supplier exists
   const supplierExists = await Supplier.findById(supplier);
   if (!supplierExists) {
     res.status(400);
     throw new Error("Invalid supplier");
   }
 
-  // ✅ Calculate totals and validate products
+  // ✅ Calculate totals and validate stock
   let totalAmount = 0;
   const orderItems = await Promise.all(
     items.map(async (item) => {
       const product = await Product.findById(item.product);
       if (!product) throw new Error(`Product not found: ${item.product}`);
 
-      // Check stock availability
       if (product.stock && product.stock < item.quantity) {
         throw new Error(`Not enough stock for ${product.name}`);
       }
@@ -52,7 +52,6 @@ export const createOrder = asyncHandler(async (req, res) => {
     })
   );
 
-  // ✅ Create new order
   const order = new Order({
     buyer: req.user._id,
     items: orderItems,
@@ -65,7 +64,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const createdOrder = await order.save();
 
-  // ✅ Populate before sending
+  // ✅ Populate for response
   const populatedOrder = await createdOrder.populate([
     { path: "buyer", select: "name email" },
     { path: "supplier", select: "shopName" },
@@ -79,24 +78,30 @@ export const createOrder = asyncHandler(async (req, res) => {
   });
 });
 
-// =========================
-// @desc    Get all orders
-// @route   GET /api/orders
-// @access  Private (Admin, Supplier, Buyer)
-// =========================
+/**
+ * =========================
+ * @desc    Get all orders
+ * @route   GET /api/orders/get
+ * @access  Private (Admin, Supplier, Buyer)
+ * =========================
+ */
 export const getOrders = asyncHandler(async (req, res) => {
   let orders;
 
   if (req.user.role === "Admin") {
+    // Admin sees everything
     orders = await Order.find().populate("buyer items.product supplier");
   } else if (req.user.role === "Supplier") {
-    // ✅ Supplier should only see their own orders
+    // Supplier sees only their orders
     const supplierDoc = await Supplier.findOne({ user: req.user._id });
-    orders = await Order.find({ supplier: supplierDoc?._id }).populate(
+    if (!supplierDoc) {
+      return res.status(403).json({ success: false, message: "Not a supplier" });
+    }
+    orders = await Order.find({ supplier: supplierDoc._id }).populate(
       "buyer items.product supplier"
     );
   } else {
-    // ✅ Buyer can only see their own orders
+    // Buyer sees only their own orders
     orders = await Order.find({ buyer: req.user._id }).populate(
       "items.product supplier"
     );
@@ -105,11 +110,13 @@ export const getOrders = asyncHandler(async (req, res) => {
   res.json({ success: true, data: orders });
 });
 
-// =========================
-// @desc    Get single order
-// @route   GET /api/orders/:id
-// @access  Private
-// =========================
+/**
+ * =========================
+ * @desc    Get single order
+ * @route   GET /api/orders/get/:id
+ * @access  Private
+ * =========================
+ */
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id).populate(
     "buyer items.product supplier"
@@ -120,26 +127,29 @@ export const getOrderById = asyncHandler(async (req, res) => {
     throw new Error("Order not found");
   }
 
-  // ✅ Allow only Admin, Supplier (of this order), or Buyer (owner of order)
   const isBuyer = order.buyer._id.toString() === req.user._id.toString();
-  const isSupplier =
-    req.user.role === "Supplier" &&
-    order.supplier &&
-    order.supplier._id.toString() === req.user._id.toString();
+
+  let isSupplier = false;
+  if (req.user.role === "Supplier") {
+    const supplierDoc = await Supplier.findOne({ user: req.user._id });
+    isSupplier = supplierDoc && order.supplier._id.toString() === supplierDoc._id.toString();
+  }
 
   if (!isBuyer && !isSupplier && req.user.role !== "Admin") {
     res.status(403);
-    throw new Error("Not authorized");
+    throw new Error("Not authorized to view this order");
   }
 
   res.json({ success: true, data: order });
 });
 
-// =========================
-// @desc    Update order status
-// @route   PUT /api/orders/:id/status
-// @access  Private (Admin / Supplier)
-// =========================
+/**
+ * =========================
+ * @desc    Update order status
+ * @route   PUT /api/orders/update/:id/status
+ * @access  Private (Admin / Supplier)
+ * =========================
+ */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
   const allowedStatuses = [
@@ -161,11 +171,12 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
     throw new Error("Invalid status value");
   }
 
-  // ✅ Only supplier of this order or admin can update
-  const isSupplier =
-    req.user.role === "Supplier" &&
-    order.supplier &&
-    order.supplier.toString() === req.user._id.toString();
+  // ✅ Check if Supplier owns this order
+  let isSupplier = false;
+  if (req.user.role === "Supplier") {
+    const supplierDoc = await Supplier.findOne({ user: req.user._id });
+    isSupplier = supplierDoc && order.supplier.toString() === supplierDoc._id.toString();
+  }
 
   if (!isSupplier && req.user.role !== "Admin") {
     res.status(403);
@@ -182,11 +193,13 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   });
 });
 
-// =========================
-// @desc    Delete order
-// @route   DELETE /api/orders/:id
-// @access  Private (Admin only)
-// =========================
+/**
+ * =========================
+ * @desc    Delete order
+ * @route   DELETE /api/orders/delete/:id
+ * @access  Private (Admin only)
+ * =========================
+ */
 export const deleteOrder = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
 

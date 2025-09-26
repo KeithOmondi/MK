@@ -3,8 +3,6 @@ import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/tool
 import type { RootState } from "../store";
 import api from "../../api/axios";
 
-
-
 // ==========================
 // Types
 // ==========================
@@ -72,13 +70,13 @@ export const createOrder = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await api.post("/create", {
+      const { data } = await api.post("/orders/create", {
         items,
         supplier,
         deliveryDetails,
         paymentMethod,
       });
-      return data;
+      return data.data; // unwrap
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -90,7 +88,7 @@ export const fetchOrders = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await api.get("/orders/get");
-      return data;
+      return data.data; // unwrap array
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -101,8 +99,8 @@ export const fetchOrderById = createAsyncThunk(
   "orders/fetchById",
   async (id: string, { rejectWithValue }) => {
     try {
-      const { data } = await api.get(`/get/${id}`);
-      return data;
+      const { data } = await api.get(`/orders/get/${id}`);
+      return data.data; // unwrap
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -116,8 +114,8 @@ export const updateOrderStatus = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await api.put(`/${id}/status`, { status });
-      return data;
+      const { data } = await api.put(`/orders/update/${id}/status`, { status });
+      return data.data; // unwrap
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -128,7 +126,7 @@ export const deleteOrder = createAsyncThunk(
   "orders/delete",
   async (id: string, { rejectWithValue }) => {
     try {
-      await api.delete(`/${id}`);
+      await api.delete(`/orders/delete/${id}`);
       return id;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
@@ -207,7 +205,6 @@ const orderSlice = createSlice({
 });
 
 export const { resetOrderState } = orderSlice.actions;
-
 export default orderSlice.reducer;
 
 // ==========================

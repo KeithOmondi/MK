@@ -16,7 +16,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     description,
     category,
     price,
-    oldPrice, // 🆕
+    oldPrice,
     stock,
     status: productStatus,
     brand,
@@ -33,12 +33,14 @@ export const createProduct = asyncHandler(async (req, res) => {
     warranty,
   } = req.body;
 
+  // 🔹 Supplier validation
   const supplier = await Supplier.findOne({ user: req.user._id });
   if (!supplier && req.user.role !== "Admin") {
     res.status(403);
     throw new Error("You must register as a supplier first");
   }
 
+  // 🔹 Cloudinary uploads
   let imageUrls = [];
   if (req.files?.length > 0) {
     const uploadResults = await Promise.all(
@@ -47,12 +49,26 @@ export const createProduct = asyncHandler(async (req, res) => {
     imageUrls = uploadResults;
   }
 
+  // 🔹 Section validation
+  const allowedSections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
+  let formattedSections = sections
+    ? (Array.isArray(sections) ? sections : [sections]).filter((s) =>
+        allowedSections.includes(s)
+      )
+    : [];
+
+  // ✅ Default to "NewArrivals" if none provided
+  if (formattedSections.length === 0) {
+    formattedSections = ["NewArrivals"];
+  }
+
+  // 🔹 Create product
   const product = new Product({
     name,
     description,
     category,
     price,
-    oldPrice: oldPrice ?? null, // 🆕 safe assignment
+    oldPrice: oldPrice ?? null,
     stock,
     brand,
     color,
@@ -60,7 +76,7 @@ export const createProduct = asyncHandler(async (req, res) => {
     images: imageUrls,
     supplier: supplier ? supplier._id : null,
     status: productStatus || "active",
-    sections: sections ? (Array.isArray(sections) ? sections : [sections]) : [],
+    sections: formattedSections,
     weight,
     dimensions,
     shippingRegions: shippingRegions ? shippingRegions.split(",") : [],
@@ -81,6 +97,7 @@ export const createProduct = asyncHandler(async (req, res) => {
   res.status(201).json(createdProduct);
 });
 
+
 // ==============================
 // @desc    Update product
 // @route   PUT /api/products/:id
@@ -92,7 +109,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
     description,
     category,
     price,
-    oldPrice, // 🆕
+    oldPrice,
     stock,
     status: productStatus,
     brand,
@@ -115,20 +132,26 @@ export const updateProduct = asyncHandler(async (req, res) => {
     throw new Error("Product not found");
   }
 
+  // 🔹 Section validation
+  const allowedSections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
+  const formattedSections = sections
+    ? (Array.isArray(sections) ? sections : [sections]).filter((s) =>
+        allowedSections.includes(s)
+      )
+    : product.sections;
+
+  // 🔹 Update fields
   product.name = name || product.name;
   product.description = description || product.description;
   product.category = category || product.category;
   product.price = price ?? product.price;
-  product.oldPrice = oldPrice ?? product.oldPrice; // 🆕
+  product.oldPrice = oldPrice ?? product.oldPrice;
   product.stock = stock ?? product.stock;
   product.status = productStatus || product.status;
-
   product.brand = brand || product.brand;
   product.color = color || product.color;
   product.size = size || product.size;
-  product.sections = sections
-    ? (Array.isArray(sections) ? sections : [sections])
-    : product.sections;
+  product.sections = formattedSections;
 
   product.weight = weight ?? product.weight;
   product.dimensions = dimensions || product.dimensions;
@@ -141,6 +164,7 @@ export const updateProduct = asyncHandler(async (req, res) => {
   product.returnPolicy = returnPolicy || product.returnPolicy;
   product.warranty = warranty || product.warranty;
 
+  // 🔹 Image uploads
   if (req.files?.length > 0) {
     const uploadResults = await Promise.all(
       req.files.map((file) => uploadToCloudinary(file.buffer))
@@ -151,6 +175,8 @@ export const updateProduct = asyncHandler(async (req, res) => {
   const updatedProduct = await product.save();
   res.json(updatedProduct);
 });
+
+
 
 // ==============================
 // @desc    Get products (all, filtered, paginated, or by slug)
@@ -301,15 +327,31 @@ export const deleteProductImage = asyncHandler(async (req, res) => {
 // @access  Public
 // ==============================
 export const getHomepageProducts = asyncHandler(async (req, res) => {
-  const sections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
+  // Define the sections with the keys you want in frontend
+  const sectionMap = {
+    flashSales: "FlashSales",
+    deals: "BestDeals",
+    newArrivals: "NewArrivals",
+    topTrending: "TopTrending",
+  };
 
   const results = {};
-  for (const section of sections) {
-    results[section] = await Product.find({
-      sections: section,
+
+  // Fetch products for each section
+  for (const [key, sectionName] of Object.entries(sectionMap)) {
+    const products = await Product.find({
+      sections: sectionName,
       status: "active",
-    }).limit(10);
+    })
+      .limit(10)
+      .populate("category", "name slug") // populate category info
+      .populate("supplier", "shopName"); // optional: populate supplier info
+
+    results[key] = products;
   }
 
   res.json(results);
 });
+
+
+
