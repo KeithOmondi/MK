@@ -1,86 +1,176 @@
-// paymentController.js
-import dotenv from "dotenv";
-dotenv.config({ path: "./config/.env" }); // ✅ load env first
-
-import Stripe from "stripe";
+import asyncHandler from "express-async-handler";
 import Order from "../models/Order.js";
-import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
-import ErrorHandler from "../middlewares/errorMiddlewares.js";
+import PendingPayment from "../models/PendingPayment.js";
+import axios from "axios";
+import moment from "moment";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+/* ------------------ Helper: Get M-Pesa OAuth Token ------------------ */
+const getAccessToken = async () => {
+  const { LIPAPAY_CONSUMER_KEY, LIPAPAY_CONSUMER_SECRET } = process.env;
+  if (!LIPAPAY_CONSUMER_KEY || !LIPAPAY_CONSUMER_SECRET) {
+    throw new Error("Missing LipPay consumer key/secret in environment");
+  }
 
-// ==============================
-// Create Stripe Payment Intent
-// ==============================
-export const createStripePayment = catchAsyncErrors(async (req, res, next) => {
-  const { orderId } = req.body;
+  const auth = Buffer.from(
+    `${LIPAPAY_CONSUMER_KEY}:${LIPAPAY_CONSUMER_SECRET}`
+  ).toString("base64");
 
-  if (!orderId) return next(new ErrorHandler(400, "Order ID is required"));
+  const { data } = await axios.get(
+    "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
+    { headers: { Authorization: `Basic ${auth}` } }
+  );
 
-  const order = await Order.findById(orderId).populate("items.product buyer");
-  if (!order) return next(new ErrorHandler(404, "Order not found"));
+  return data.access_token;
+};
 
-  // Amount in cents
-  const amount = Math.round(order.totalAmount * 100);
+/* ------------------------ INITIATE STK PUSH ------------------------ */
+export const initiateLipPay = asyncHandler(async (req, res) => {
+  const { orderId, phoneNumber } = req.body;
 
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount,
-    currency: "usd",
-    metadata: {
-      orderId: order._id.toString(),
-      userId: order.buyer._id.toString(),
-    },
-  });
+  if (!orderId || !phoneNumber) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Order ID and phone number are required" });
+  }
 
-  res.status(201).json({
-    success: true,
-    clientSecret: paymentIntent.client_secret,
-  });
-});
+  const order = await Order.findById(orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: "Order not found" });
+  }
 
-// ==============================
-// Stripe Webhook for Payment Confirmation
-// ==============================
-export const stripeWebhook = catchAsyncErrors(async (req, res, next) => {
-  const sig = req.headers["stripe-signature"];
-  let event;
+  // Sanitize phone
+  let sanitizedPhone = phoneNumber.replace(/\D/g, "");
+  if (!sanitizedPhone.startsWith("254")) {
+    sanitizedPhone = "254" + sanitizedPhone.slice(-9);
+  }
 
-  if (!sig) return res.status(400).send("Missing Stripe signature header");
+  const { LIPAPAY_SHORTCODE, LIPAPAY_PASSKEY, LIPAPAY_CALLBACK_URL } = process.env;
+  if (!LIPAPAY_SHORTCODE || !LIPAPAY_PASSKEY || !LIPAPAY_CALLBACK_URL) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Missing LipPay configuration" });
+  }
+
+  const timestamp = moment().format("YYYYMMDDHHmmss");
+  const password = Buffer.from(
+    LIPAPAY_SHORTCODE + LIPAPAY_PASSKEY + timestamp
+  ).toString("base64");
+  const accountReference = `ORDER_${orderId}`;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error("⚠️ Webhook signature verification failed:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+    const accessToken = await getAccessToken();
 
-  switch (event.type) {
-    case "payment_intent.succeeded":
-      const paymentIntent = event.data.object;
-      const orderId = paymentIntent.metadata.orderId;
+    const payload = {
+      BusinessShortCode: LIPAPAY_SHORTCODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: order.totalAmount,
+      PartyA: sanitizedPhone,
+      PartyB: LIPAPAY_SHORTCODE,
+      PhoneNumber: sanitizedPhone,
+      CallBackURL: LIPAPAY_CALLBACK_URL,
+      AccountReference: accountReference,
+      TransactionDesc: "Payment for order",
+    };
 
-      const order = await Order.findById(orderId);
-      if (order) {
-        order.paymentStatus = "paid";
-        order.status = "processing"; // optional
-        order.transactionId = paymentIntent.id;
-        order.paidAt = Date.now();
-        await order.save();
-        console.log(`✅ Payment successful for order ${orderId}`);
+    const { data } = await axios.post(
+      "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
       }
-      break;
+    );
 
-    case "payment_intent.payment_failed":
-      console.warn(`⚠️ Payment failed for paymentIntent: ${event.data.object.id}`);
-      break;
+    // Save pending payment
+    if (data.CheckoutRequestID) {
+      await PendingPayment.create({
+        checkoutRequestId: data.CheckoutRequestID,
+        order: order._id,
+        phoneNumber: sanitizedPhone,
+        status: "pending",
+      });
+    }
 
-    default:
-      console.log(`ℹ️ Unhandled event type: ${event.type}`);
+    return res.status(200).json({
+      success: true,
+      message: "Please complete your order by entering your M-Pesa PIN",
+      orderId: order._id,
+      checkoutRequestId: data.CheckoutRequestID,
+    });
+  } catch (error) {
+    console.error("❌ LipPay initiation error:", error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to initiate payment",
+      error: error.response?.data || error.message,
+    });
+  }
+});
+
+/* ------------------------ LIPAPAY CALLBACK ------------------------ */
+export const lipPayCallback = asyncHandler(async (req, res) => {
+  const { Body } = req.body;
+  if (!Body?.stkCallback) {
+    return res.status(400).send("Invalid callback data");
   }
 
-  res.json({ received: true });
+  const callback = Body.stkCallback;
+  const pending = await PendingPayment.findOne({
+    checkoutRequestId: callback.CheckoutRequestID,
+  }).populate("order");
+
+  if (!pending) {
+    console.error("❌ No PendingPayment found for:", callback.CheckoutRequestID);
+    return res.status(404).send("Pending payment not found");
+  }
+
+  if (callback.ResultCode === 0) {
+    // Success
+    pending.order.paymentStatus = "paid";
+    pending.order.status = "Processing";
+    pending.order.transactionId = callback.CheckoutRequestID;
+    pending.order.paidAt = new Date();
+    await pending.order.save();
+
+    pending.status = "completed";
+    await pending.save();
+
+    console.log(`✅ Payment completed for Order ${pending.order._id}`);
+  } else {
+    // Failed
+    pending.order.paymentStatus = "failed";
+    pending.order.status = "Pending";
+    await pending.order.save();
+
+    pending.status = "failed";
+    pending.failedReason = callback.ResultDesc || "Payment failed";
+    await pending.save();
+
+    console.warn(
+      `⚠️ Payment failed → CheckoutRequestID: ${callback.CheckoutRequestID}, code: ${callback.ResultCode}, reason: ${callback.ResultDesc}`
+    );
+  }
+
+  res.json({ success: true });
+});
+
+/* ------------------------ CHECK PAYMENT STATUS ------------------------ */
+export const getPaymentStatus = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+  const order = await Order.findById(orderId);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: "Order not found" });
+  }
+
+  res.json({
+    success: true,
+    orderId: order._id,
+    paymentStatus: order.paymentStatus,
+    status: order.status,
+  });
 });

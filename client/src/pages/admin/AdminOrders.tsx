@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  fetchOrders,
+  fetchAdminOrders,
   updateOrderStatus,
   deleteOrder,
+  type Order,
 } from "../../redux/slices/orderSlice";
 import { toast } from "react-toastify";
 import type { AppDispatch, RootState } from "../../redux/store";
@@ -13,9 +14,8 @@ const AdminOrders: React.FC = () => {
   const { orders, loading, error } = useSelector((state: RootState) => state.orders);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  // Fetch orders on mount
   useEffect(() => {
-    dispatch(fetchOrders());
+    dispatch(fetchAdminOrders());
   }, [dispatch]);
 
   useEffect(() => {
@@ -32,7 +32,7 @@ const AdminOrders: React.FC = () => {
   const handleDelete = (id: string) => {
     dispatch(deleteOrder(id))
       .unwrap()
-      .then(() => toast.error("Order deleted!"))
+      .then(() => toast.success("Order deleted!"))
       .catch((err) => toast.error(err));
   };
 
@@ -41,10 +41,7 @@ const AdminOrders: React.FC = () => {
       <h1 className="text-3xl font-bold mb-6 text-gray-800">📦 Orders Management</h1>
 
       {loading && <p className="text-indigo-600">Loading orders...</p>}
-
-      {!loading && orders.length === 0 && (
-        <p className="text-gray-600">No orders found.</p>
-      )}
+      {!loading && orders.length === 0 && <p className="text-gray-600">No orders found.</p>}
 
       {!loading && orders.length > 0 && (
         <div className="overflow-x-auto bg-white shadow-lg rounded-2xl">
@@ -61,12 +58,18 @@ const AdminOrders: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => (
+              {orders.map((order: Order) => (
                 <tr key={order._id} className="border-b hover:bg-gray-50">
-                  <td className="px-6 py-4">{order.buyer}</td>
-                  <td className="px-6 py-4">{order.supplier}</td>
-                  <td className="px-6 py-4 font-medium">${order.totalAmount.toFixed(2)}</td>
-                  <td className="px-6 py-4">{order.paymentMethod}</td>
+                  <td className="px-6 py-4">
+                    {typeof order.buyer === "string"
+                      ? order.buyer
+                      : order.buyer?.name || order.buyer?.email || "N/A"}
+                  </td>
+                  <td className="px-6 py-4">{order.supplier || "N/A"}</td>
+                  <td className="px-6 py-4 font-medium">
+                    KSh {(order.totalAmount ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4">{order.paymentMethod || "N/A"}</td>
                   <td className="px-6 py-4">
                     <span
                       className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -83,7 +86,7 @@ const AdminOrders: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {new Date(order.createdAt).toLocaleDateString()}
+                    {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-6 py-4 flex gap-3 justify-center">
                     {order.status === "Pending" && (
@@ -96,7 +99,7 @@ const AdminOrders: React.FC = () => {
                         </button>
                         <button
                           onClick={() => handleUpdateStatus(order._id, "Rejected")}
-                          className="text-yellow-600 hover:underline"
+                          className="text-red-600 hover:underline"
                         >
                           Reject
                         </button>
@@ -122,26 +125,36 @@ const AdminOrders: React.FC = () => {
         </div>
       )}
 
-      {/* Modal for viewing order details */}
+      {/* Modal */}
       {selectedOrderId && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full overflow-y-auto max-h-[80vh]">
             <h2 className="text-xl font-bold mb-4">Order Details</h2>
             {orders
               .filter((o) => o._id === selectedOrderId)
-              .map((order) => (
+              .map((order: Order) => (
                 <div key={order._id}>
-                  <p><strong>Buyer:</strong> {order.buyer}</p>
-                  <p><strong>Supplier:</strong> {order.supplier}</p>
-                  <p><strong>Total:</strong> ${order.totalAmount.toFixed(2)}</p>
+                  <p>
+                    <strong>Buyer:</strong>{" "}
+                    {typeof order.buyer === "string"
+                      ? order.buyer
+                      : order.buyer?.name || order.buyer?.email || "N/A"}
+                  </p>
+                  <p><strong>Supplier:</strong> {order.supplier || "N/A"}</p>
+                  <p><strong>Total:</strong> KSh {(order.totalAmount ?? 0).toLocaleString()}</p>
                   <p><strong>Status:</strong> {order.status}</p>
-                  <p><strong>Payment:</strong> {order.paymentMethod}</p>
-                  <p><strong>Delivery:</strong> {order.deliveryDetails.address}, {order.deliveryDetails.city}, {order.deliveryDetails.phone}</p>
+                  <p><strong>Payment:</strong> {order.paymentMethod || "N/A"}</p>
+                  <p>
+                    <strong>Delivery:</strong>{" "}
+                    {order.deliveryDetails?.address || "N/A"}, {order.deliveryDetails?.city || ""}{" "}
+                    {order.deliveryDetails?.phone && `, ${order.deliveryDetails.phone}`}
+                  </p>
                   <p><strong>Items:</strong></p>
                   <ul className="list-disc ml-5">
-                    {order.items.map((item, idx) => (
+                    {order.items?.map((item, idx) => (
                       <li key={idx}>
-                        {item.product} x{item.quantity} - ${item.price.toFixed(2)}
+                        {item.name || item.productId || "Product"} x{item.quantity || 0} - KSh{" "}
+                        {(item.price ?? 0).toLocaleString()}
                       </li>
                     ))}
                   </ul>

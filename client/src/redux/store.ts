@@ -9,6 +9,7 @@ import chatReducer from "./slices/chatSlice";
 import analyticsReducer from "./slices/analyticsSlice";
 import cartReducer from "./slices/cartSlice";
 import recentlyViewedReducer from "./slices/recentlyViewedSlice"
+import reviewReducer from "./slices/reviewSlice"
 
 export const store = configureStore({
   reducer: {
@@ -21,7 +22,8 @@ export const store = configureStore({
      chat: chatReducer,
      analytics: analyticsReducer,
      cart: cartReducer,
-     recentlyViewed: recentlyViewedReducer
+     recentlyViewed: recentlyViewedReducer,
+     reviews: reviewReducer,
   },
 });
 

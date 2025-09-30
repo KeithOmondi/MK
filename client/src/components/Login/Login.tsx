@@ -36,7 +36,7 @@ const LoginPage: React.FC = () => {
           toast.info("You must change your temporary password first.");
           setToastShown(true);
         }
-        navigate("/password/change", { replace: true });
+        navigate("/password/reset", { replace: true });
         return;
       }
 

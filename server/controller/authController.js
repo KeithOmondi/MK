@@ -32,13 +32,13 @@ export const register = catchAsyncErrors(async (req, res, next) => {
   const existingUser = await User.findOne({ email, accountVerified: true });
   if (existingUser) return next(new ErrorHandler(400, "User already exists."));
 
-  await User.deleteMany({ email, accountVerified: false }); // cleanup unverified
+  // cleanup unverified accounts for the same email
+  await User.deleteMany({ email, accountVerified: false });
 
-  const hashedPassword = await bcrypt.hash(password, 10);
   const newUser = new User({
     name,
     email,
-    password: hashedPassword,
+    password, // raw password -> will be hashed in model pre-save hook
     verificationAttempts: 1,
     lastAttemptAt: new Date(),
   });
@@ -97,7 +97,9 @@ export const login = catchAsyncErrors(async (req, res, next) => {
   if (!email || !password)
     return next(new ErrorHandler(400, "Please provide both email and password."));
 
-  const user = await User.findOne({ email }).select("+password +loginAttempts +lockUntil +forcePasswordChange");
+  const user = await User.findOne({ email }).select(
+    "+password +loginAttempts +lockUntil +forcePasswordChange"
+  );
   if (!user) return next(new ErrorHandler(401, "Invalid email or password."));
 
   if (user.isLocked) {
@@ -188,7 +190,7 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
 
   if (!user) return next(new ErrorHandler(400, "Invalid or expired token."));
 
-  user.password = await bcrypt.hash(password, 10);
+  user.password = password; // raw -> model will hash
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
   await user.save();
@@ -212,7 +214,7 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
   if (newPassword !== confirmNewPassword)
     return next(new ErrorHandler(400, "New passwords do not match."));
 
-  user.password = await bcrypt.hash(newPassword, 10);
+  user.password = newPassword; // raw -> model will hash
   await user.save();
 
   sendToken(user, 200, "Password updated successfully.", res);
@@ -229,7 +231,7 @@ export const changePassword = catchAsyncErrors(async (req, res, next) => {
   const isValid = await bcrypt.compare(currentPassword, user.password);
   if (!isValid) return next(new ErrorHandler(401, "Current password incorrect."));
 
-  user.password = await bcrypt.hash(newPassword, 10);
+  user.password = newPassword; // raw -> model will hash
   user.forcePasswordChange = false;
   await user.save();
 

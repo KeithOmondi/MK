@@ -1,14 +1,21 @@
+// routes/paymentRoutes.js
 import express from "express";
-import { createStripePayment, stripeWebhook } from "../controller/paymentController.js";
 import { isAuthenticated } from "../middlewares/authMiddleware.js";
-import bodyParser from "body-parser";
+import {
+  initiateLipPay,
+  lipPayCallback,
+  getPaymentStatus, // 👈 add this
+} from "../controller/paymentController.js";
 
 const router = express.Router();
 
-// Create payment intent
-router.post("/stripe", isAuthenticated, createStripePayment);
+// Initiate payment → Buyer
+router.post("/mpesa/pay", isAuthenticated, initiateLipPay);
 
-// Stripe webhook (raw body required)
-router.post("/stripe/webhook", bodyParser.raw({ type: "application/json" }), stripeWebhook);
+// Callback from Safaricom
+router.post("/mpesa/callback", lipPayCallback);
+
+// Check payment status → Buyer polls this after STK push
+router.get("/status/:orderId", isAuthenticated, getPaymentStatus);
 
 export default router;

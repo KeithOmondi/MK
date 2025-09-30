@@ -30,6 +30,11 @@ import UserDashboard from "../pages/User/UserDashboard";
 import Cart from "../components/Cart/Cart";
 import ManageProducts from "../pages/Supplier/ManageProducts";
 import MyOrders from "../pages/User/MyOrders";
+import Checkout from "../components/Checkout/Checkout";
+import ThankYou from "../pages/ThankYou";
+import OrderDetails from "../pages/User/OrderDetails";
+import SupplierOrders from "../pages/Supplier/SupplierOrders";
+import SupplierOrderDetails from "../pages/Supplier/SupplierOrderDetails";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -43,7 +48,16 @@ export const userRoutes = [
       <MyOrders/>
     </UserLayout>
   ) },
-  
+  { path: "/user/orders/:id", element: (
+    <UserLayout>
+      <OrderDetails/>
+    </UserLayout>
+  ) },
+  // ✅ Sensitive routes WITHOUT UserLayout
+  {
+    path: "/checkout",
+    element: <Checkout />,  // No UserLayout here
+  },
 ];
 
 // ------------------ ADMIN ROUTES ------------------
@@ -108,6 +122,22 @@ export const supplierRoutes = [
       </SupplierLayout>
     ),
   },
+  {
+    path: "/supplier/orders",
+    element: (
+      <SupplierLayout>
+        <SupplierOrders />
+      </SupplierLayout>
+    ),
+  },
+   {
+    path: "/supplier/order/:id",
+    element: (
+      <SupplierLayout>
+        <SupplierOrderDetails />
+      </SupplierLayout>
+    ),
+  },
 ];
 
 // ------------------ AUTH ROUTES ------------------
@@ -128,6 +158,7 @@ export const authRoutes = [
   { path: "/product/:id", element: <ProductPage /> },
   { path: "/community", element: <SupplierApplicationForm /> },
   { path: "/cart", element: <Cart /> },
+  { path: "/thank-you", element: <ThankYou /> },
 ];
 
 // ------------------ FALLBACK ------------------
