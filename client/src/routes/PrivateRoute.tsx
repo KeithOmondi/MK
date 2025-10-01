@@ -1,3 +1,4 @@
+// src/routes/PrivateRoute.tsx
 import React, { type ReactNode } from "react";
 import { useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
@@ -8,9 +9,10 @@ interface PrivateRouteProps {
 }
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
-  const { token } = useSelector((state: RootState) => state.auth);
+  // ✅ Select only what you need
+  const accessToken = useSelector((state: RootState) => state.auth.accessToken);
 
-  if (!token) {
+  if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
 

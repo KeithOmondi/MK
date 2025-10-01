@@ -14,7 +14,11 @@ import {
 import { useDispatch } from "react-redux";
 import { toast } from "react-toastify";
 import type { AppDispatch } from "../../redux/store";
-import { clearAuthState, logout } from "../../redux/slices/authSlice";
+import {
+  clearAuthState,
+  logout,
+  logoutUser,
+} from "../../redux/slices/authSlice";
 
 interface NavLinkItem {
   to: string;
@@ -42,11 +46,7 @@ const AdminSidebar: React.FC = () => {
       label: "Products",
       icon: <MdInventory size={20} />,
     },
-    {
-      to: "/admin/suppliers",
-      label: "Suppliers",
-      icon: <MdStore size={20} />,
-    },
+    { to: "/admin/suppliers", label: "Suppliers", icon: <MdStore size={20} /> },
     {
       to: "/admin/customers",
       label: "Customers",
@@ -66,16 +66,16 @@ const AdminSidebar: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await dispatch(logout());
-      dispatch(clearAuthState());
+      // Try API logout first
+      await dispatch(logoutUser()).unwrap();
       toast.success("Logged out successfully.");
-      navigate("/login");
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        toast.error(err.message || "Logout failed.");
-      } else {
-        toast.error("Logout failed.");
-      }
+    } catch (err: any) {
+      // Fallback: local logout only
+      toast.warning("Session cleared locally.");
+    } finally {
+      dispatch(logout());
+      dispatch(clearAuthState());
+      navigate("/login", { replace: true });
     }
   };
 

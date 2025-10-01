@@ -1,4 +1,3 @@
-// src/pages/LoginPage.tsx
 import React, { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -17,7 +16,7 @@ const LoginPage: React.FC = () => {
 
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { loading, token, error, user, forcePasswordChange } = useSelector(
+  const { loading, user, accessToken, error, success, forcePasswordChange } = useSelector(
     (state: RootState) => state.auth
   );
 
@@ -30,34 +29,29 @@ const LoginPage: React.FC = () => {
     }
   }, []);
 
-  // Handle login redirects
+  // Handle login success or special states
   useEffect(() => {
-    if (!token || !user) return;
+    if (!user) return;
 
     if (forcePasswordChange) {
-      navigate("/force-change-password", { replace: true });
+      navigate("/force-change-password", { replace: true, state: { user } });
       return;
     }
 
-    let path = "/dashboard";
-    switch (user.role) {
-      case "Admin":
-        path = "/admin/dashboard";
-        break;
-      case "Supplier":
-        path = "/supplier/dashboard";
-        break;
-      case "Customer":
-      default:
-        path = "/dashboard";
-        break;
-    }
+    if (!accessToken) return;
 
-    toast.success("Login successful");
-    navigate(path, { replace: true });
-  }, [token, user, forcePasswordChange, navigate]);
+    toast.success(success || "Login successful ✅");
+    dispatch(clearAuthState());
 
-  // Show error toast on auth error
+    const rolePaths: Record<string, string> = {
+      Admin: "/admin/dashboard",
+      Supplier: "/supplier/dashboard",
+      User: "/dashboard",
+    };
+    navigate(rolePaths[user.role] || "/dashboard", { replace: true });
+  }, [user, accessToken, forcePasswordChange, success, navigate, dispatch]);
+
+  // Handle errors
   useEffect(() => {
     if (error) {
       toast.error(error);
@@ -75,64 +69,59 @@ const LoginPage: React.FC = () => {
     const { email, password } = formData;
 
     if (!email.trim() || !password.trim()) {
-      toast.warn("Email and password cannot be empty.");
+      toast.error("Email and password cannot be empty.");
       return;
     }
 
-    if (remember) localStorage.setItem("rememberEmail", email);
-    else localStorage.removeItem("rememberEmail");
+    remember
+      ? localStorage.setItem("rememberEmail", email)
+      : localStorage.removeItem("rememberEmail");
 
     try {
-      await dispatch(login({ email, password })).unwrap();
+      const result = await dispatch(login({ email, password })).unwrap();
+
+      if (result.requiresPasswordChange) {
+        navigate("/force-change-password", { replace: true, state: { user: result.user } });
+        return;
+      }
+
+      if (result.accountLocked) {
+        toast.error(`Account locked. Attempts left: ${result.attemptsLeft}`);
+        return;
+      }
+
+      toast.success(result.message || "Login successful ✅");
     } catch (err: any) {
-      toast.error(err.message || "Login failed");
+      toast.error(err || "Login failed");
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-md w-full bg-white shadow-2xl rounded-2xl p-8 sm:p-10 space-y-7 border border-gray-100 transition-transform duration-300 hover:scale-[1.01]">
+      <div className="max-w-md w-full bg-white shadow-2xl rounded-2xl p-8 sm:p-10 space-y-7 border border-gray-100">
         <div className="text-center">
           <h2 className="text-4xl font-extrabold text-gray-900 leading-tight">Welcome Back! 👋</h2>
           <p className="mt-2 text-lg text-gray-600">Sign in to your account</p>
         </div>
 
         <form className="space-y-6" onSubmit={handleSubmit}>
-          <div>
-            <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-gray-800 mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              autoComplete="current-password"
-              placeholder="••••••••"
-              className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
-              disabled={loading}
-            />
-          </div>
+          {["email", "password"].map((field) => (
+            <div key={field}>
+              <label className="block text-sm font-semibold text-gray-800 mb-1">
+                {field === "email" ? "Email Address" : "Password"}
+              </label>
+              <input
+                type={field}
+                name={field}
+                value={formData[field as keyof FormData]}
+                onChange={handleChange}
+                required
+                placeholder={field === "email" ? "you@example.com" : "••••••••"}
+                className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
+                disabled={loading}
+              />
+            </div>
+          ))}
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-700 cursor-pointer">
@@ -140,14 +129,14 @@ const LoginPage: React.FC = () => {
                 type="checkbox"
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
-                className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 transition duration-150 ease-in-out"
+                className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                 disabled={loading}
               />
               <span className="ml-2 select-none">Remember me</span>
             </label>
             <Link
               to="/forgot-password"
-              className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition duration-150 ease-in-out"
+              className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
             >
               Forgot password?
             </Link>
@@ -170,12 +159,19 @@ const LoginPage: React.FC = () => {
                   fill="none"
                   viewBox="0 0 24 24"
                 >
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
                   <path
                     className="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
                 Signing in...
               </>
@@ -189,7 +185,7 @@ const LoginPage: React.FC = () => {
           Don't have an account?{" "}
           <Link
             to="/register"
-            className="text-indigo-600 font-semibold hover:underline hover:text-indigo-700 transition duration-150 ease-in-out"
+            className="text-indigo-600 font-semibold hover:underline hover:text-indigo-700"
           >
             Sign up
           </Link>

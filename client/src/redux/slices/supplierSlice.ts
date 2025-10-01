@@ -57,7 +57,6 @@ const initialState: SupplierState = {
 // Async Thunks
 // =========================
 
-// Register Supplier
 export const registerSupplier = createAsyncThunk<Supplier, FormData>(
   "suppliers/register",
   async (formData, { rejectWithValue }) => {
@@ -71,6 +70,8 @@ export const registerSupplier = createAsyncThunk<Supplier, FormData>(
     }
   }
 );
+
+
 
 // Fetch All Suppliers
 export const fetchSuppliers = createAsyncThunk<Supplier[]>(

@@ -1,3 +1,4 @@
+// src/routes/SupplierRoute.tsx
 import React from "react";
 import { useSelector } from "react-redux";
 import { Navigate } from "react-router-dom";
@@ -8,10 +9,12 @@ interface SupplierRouteProps {
 }
 
 const SupplierRoute: React.FC<SupplierRouteProps> = ({ children }) => {
-  const { token, user } = useSelector((state: RootState) => state.auth);
+  // ✅ Select only what you need
+  const accessToken = useSelector((state: RootState) => state.auth.accessToken);
+  const user = useSelector((state: RootState) => state.auth.user);
 
   // Not logged in
-  if (!token || !user) {
+  if (!accessToken || !user) {
     return <Navigate to="/login" replace />;
   }
 

@@ -1,24 +1,36 @@
 // utils/sendToken.js
-export const sendToken = (user, statusCode, message, res) => {
-  const token = user.getJwtToken();
+export const sendToken = async (user, statusCode, message, res) => {
+  // Generate tokens
+  const accessToken = user.getJwtToken(); // short-lived (e.g. 15m)
+  const refreshToken = user.getRefreshToken(); // long-lived (e.g. 7d)
 
-  const safeUser = user.toJSON();
+  // Save refresh token in DB (so we can invalidate later if needed)
+  user.refreshToken = refreshToken;
+  await user.save({ validateBeforeSave: false });
 
-  res
-    .status(statusCode)
-    .cookie("token", token, {
-      expires: new Date(
-        Date.now() +
-          Number(process.env.COOKIE_EXPIRE) * 24 * 60 * 60 * 1000 // ✅ ensure number
-      ),
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // ✅ better for cross-site
-    })
-    .json({
-      success: true,
-      message,
-      user: safeUser,
-      token, // ⚠️ keep only if you want to return in body
-    });
+  // Convert to plain object and strip sensitive fields
+  const safeUser = user.toObject();
+  delete safeUser.password;
+  delete safeUser.refreshToken;
+
+  // Send refresh token in secure HttpOnly cookie
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production", // send only over HTTPS in prod
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge:
+      Number(process.env.JWT_REFRESH_COOKIE_EXPIRE || 7) *
+      24 *
+      60 *
+      60 *
+      1000, // default 7 days
+  });
+
+  // Send access token + user in response body
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    user: safeUser,
+    accessToken,
+  });
 };

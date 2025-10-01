@@ -1,10 +1,12 @@
+// routes/authRoutes.js
 import express from "express";
 import {
-  changePassword,
+  //changePassword,
   forgotPassword,
   getUser,
   login,
   logout,
+  refreshToken,   // ✅ NEW
   register,
   resendOTP,
   resetPassword,
@@ -16,16 +18,23 @@ import { registerValidation, validateRequest } from "../middlewares/authValidato
 
 const router = express.Router();
 
-router.post("/register", register, registerValidation, validateRequest);
+/* ================================
+   Auth Routes
+================================ */
+router.post("/register", registerValidation, validateRequest, register);
 router.post("/verify-otp", verifyOTP);
 router.post("/login", login);
 router.get("/logout", isAuthenticated, logout);
 router.get("/me", isAuthenticated, getUser);
+
+// ✅ New Refresh Token endpoint
+router.post("/refresh-token", refreshToken);
+
 router.post("/password/forgot", forgotPassword);
 router.put("/password/reset/:token", resetPassword);
 router.put("/password/update", isAuthenticated, updatePassword);
-router.put("/change-password", isAuthenticated, changePassword);
-router.post("/otp/resend", resendOTP);
+//router.put("/change-password", isAuthenticated, changePassword);
 
+router.post("/otp/resend", resendOTP);
 
 export default router;

@@ -2,231 +2,208 @@
 import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { User } from "../models/userModel.js";
-import bcrypt from "bcryptjs";
-import { sendVerificationCode } from "../utils/sendVerificationCode.js";
 import validator from "validator";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import { sendVerificationCode } from "../utils/sendVerificationCode.js";
 import { sendToken } from "../utils/sendToken.js";
 import { sendEmail } from "../utils/sendMail.js";
-import crypto from "crypto";
 
-/**
- * PASSWORD VALIDATION HELPER
- */
+/* -------------------------
+   Helpers
+------------------------- */
 const validatePassword = (password) => {
-  if (!validator.isStrongPassword(password, {
+  const isStrong = validator.isStrongPassword(password, {
     minLength: 8,
     minLowercase: 1,
     minUppercase: 1,
     minNumbers: 1,
     minSymbols: 1,
-  })) {
+  });
+  if (!isStrong) {
     throw new ErrorHandler(
       400,
-      "Password must be at least 8 chars, with uppercase, lowercase, number, and symbol."
+      "Password must be at least 8 characters long and include uppercase, lowercase, number, and symbol."
     );
   }
 };
 
-/**
- * REGISTER
- */
-export const register = catchAsyncErrors(async (req, res, next) => {
-  const { name, email, password } = req.body;
+/* -------------------------
+   Register
+------------------------- */
+const register = catchAsyncErrors(async (req, res, next) => {
+  let { name, email, password } = req.body;
+  if (!name || !email || !password)
+    return next(new ErrorHandler(400, "All fields are required."));
 
-  if (!name || !email || !password) {
-    return next(new ErrorHandler(400, "Please provide all required fields."));
-  }
-
-  if (!validator.isEmail(email)) {
-    return next(new ErrorHandler(400, "Invalid email address."));
-  }
-
+  email = email.toLowerCase().trim();
+  if (!validator.isEmail(email)) return next(new ErrorHandler(400, "Invalid email address."));
   validatePassword(password);
 
   const existingUser = await User.findOne({ email, accountVerified: true });
   if (existingUser) return next(new ErrorHandler(400, "User already exists."));
 
-  // cleanup unverified accounts for the same email
   await User.deleteMany({ email, accountVerified: false });
 
-  const newUser = new User({
-    name,
-    email,
-    password,
-    verificationAttempts: 1,
-    lastAttemptAt: new Date(),
-  });
-
+  const newUser = new User({ name, email, password });
   const code = newUser.generateVerificationCode();
   await newUser.save();
 
   await sendVerificationCode(email, code);
 
-  res.status(201).json({
-    success: true,
-    message: "User registered. Verification code sent to email.",
-  });
+  res.status(201).json({ success: true, message: "User registered. Verification code sent to email." });
 });
 
-/**
- * VERIFY OTP
- */
-export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Verify OTP
+------------------------- */
+const verifyOTP = catchAsyncErrors(async (req, res, next) => {
   const { email, otp } = req.body;
+  if (!email || !otp) return next(new ErrorHandler(400, "Email and OTP are required."));
 
-  if (!email || !otp) {
-    return next(new ErrorHandler(400, "Email and OTP are required."));
-  }
-
-  const user = await User.findOne({ email, accountVerified: false });
+  const user = await User.findOne({ email: email.toLowerCase().trim(), accountVerified: false });
   if (!user) return next(new ErrorHandler(404, "No unverified user found."));
 
-  // Check max attempts
-  if (user.verificationAttempts >= 5) {
-    return next(new ErrorHandler(
-      429,
-      "Maximum verification attempts reached. Please request a new OTP."
-    ));
-  }
+  if (user.verificationAttempts >= 5)
+    return next(new ErrorHandler(429, "Maximum verification attempts reached. Request a new OTP."));
 
-  // Check expiry
-  if (!user.verificationCode || Date.now() > new Date(user.verificationCodeExpiry).getTime()) {
+  if (!user.verificationCode || Date.now() > user.verificationCodeExpiry)
     return next(new ErrorHandler(400, "OTP expired. Please request a new one."));
-  }
 
-  if (user.verificationCode !== Number(otp)) {
+  if (String(user.verificationCode) !== String(otp)) {
     user.verificationAttempts += 1;
-    user.lastAttemptAt = new Date();
+    user.lastOtpSentAt = new Date();
     await user.save({ validateBeforeSave: false });
     return next(new ErrorHandler(400, "Invalid OTP."));
   }
 
-  // Successful verification
   user.accountVerified = true;
   user.verificationCode = undefined;
   user.verificationCodeExpiry = undefined;
   user.verificationAttempts = 0;
-  user.lastAttemptAt = undefined;
+  user.lastOtpSentAt = undefined;
   await user.save();
 
-  res.status(200).json({
-    success: true,
-    message: "OTP verified successfully. Please log in.",
-  });
+  res.status(200).json({ success: true, message: "OTP verified successfully. Please log in." });
 });
 
-/**
- * RESEND OTP
- */
-export const resendOTP = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Resend OTP
+------------------------- */
+const resendOTP = catchAsyncErrors(async (req, res, next) => {
   const { email } = req.body;
-
   if (!email) return next(new ErrorHandler(400, "Email is required."));
 
-  const user = await User.findOne({ email, accountVerified: false });
+  const user = await User.findOne({ email: email.toLowerCase().trim(), accountVerified: false });
   if (!user) return next(new ErrorHandler(404, "No unverified user found."));
 
-  // Cooldown (e.g., 1 minute)
   const cooldown = 60 * 1000;
-  if (user.lastAttemptAt && Date.now() - user.lastAttemptAt.getTime() < cooldown) {
-    return next(new ErrorHandler(
-      429,
-      "Please wait 1 minute before requesting another OTP."
-    ));
-  }
+  if (user.lastOtpSentAt && Date.now() - user.lastOtpSentAt.getTime() < cooldown)
+    return next(new ErrorHandler(429, "Please wait 1 minute before requesting another OTP."));
 
-  // Max attempts check
-  if (user.verificationAttempts >= 5) {
-    return next(new ErrorHandler(
-      429,
-      "Maximum verification attempts reached. Please contact support."
-    ));
-  }
+  if (user.verificationAttempts >= 5)
+    return next(new ErrorHandler(429, "Maximum verification attempts reached. Contact support."));
 
   const code = user.generateVerificationCode();
+  user.lastOtpSentAt = new Date();
   await user.save({ validateBeforeSave: false });
 
   await sendVerificationCode(email, code);
 
-  res.status(200).json({
-    success: true,
-    message: "New OTP sent to your email.",
-  });
+  res.status(200).json({ success: true, message: "New OTP sent to your email." });
 });
 
-
-/**
- * LOGIN
- */
-export const login = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Login
+------------------------- */
+const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
-
-  // Log the incoming request
-  console.log("📥 Incoming request:", req.path, req.body);
-
   if (!email || !password)
-    return next(new ErrorHandler(400, "Please provide both email and password."));
+    return next(new ErrorHandler(400, "Email and password are required."));
 
-  const user = await User.findOne({ email }).select(
-    "+password +loginAttempts +lockUntil +forcePasswordChange"
+  const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
+    "+password +loginAttempts +lockUntil +forcePasswordChange +forcePasswordToken +forcePasswordTokenExpiry +refreshToken"
   );
   if (!user) return next(new ErrorHandler(401, "Invalid email or password."));
 
   if (user.isLocked) {
     const unlockTime = Math.ceil((user.lockUntil - Date.now()) / 60000);
-    return next(new ErrorHandler(423, `Account locked. Try again in ${unlockTime} min(s).`));
+    return res.status(423).json({
+      success: false,
+      accountLocked: true,
+      message: `Account locked. Try again in ${unlockTime} minute(s).`,
+    });
   }
 
-  const isValid = await bcrypt.compare(password, user.password);
+  const isValid = await user.comparePassword(password);
   if (!isValid) {
     await user.incrementLoginAttempts();
-    return next(new ErrorHandler(401, "Invalid email or password."));
+    const attemptsLeft = Math.max(5 - (user.loginAttempts || 0), 0);
+    return res.status(401).json({
+      success: false,
+      attemptsLeft,
+      message: `Invalid email or password. You have ${attemptsLeft} attempt(s) remaining.`,
+    });
   }
 
   await user.resetLoginAttempts();
 
+  // ---- FORCE PASSWORD CHANGE FLOW ----
   if (user.forcePasswordChange) {
+    const token = user.generateForcePasswordToken();
+    await user.save({ validateBeforeSave: false });
+
+    const url = `${process.env.FRONTEND_URL}/force-change-password?token=${token}`;
+    await sendEmail({
+      email: user.email,
+      subject: "Password Change Required",
+      message: `Click here: ${url}`,
+    });
+
     return res.status(200).json({
       success: true,
       requiresPasswordChange: true,
-      message: "Please change your temporary password.",
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      message: "Please check your email to set a new password.",
     });
   }
 
-  sendToken(user, 200, "Login successful", res);
+  await sendToken(user, 200, "Login successful.", res);
 });
 
+/* -------------------------
+   Force Password Change
+------------------------- */
+const forceChangePassword = catchAsyncErrors(async (req, res, next) => {
+  const { token, newPassword, confirmNewPassword } = req.body;
+  if (newPassword !== confirmNewPassword) return next(new ErrorHandler(400, "Passwords do not match."));
+  validatePassword(newPassword);
 
-/**
- * LOGOUT
- */
-export const logout = catchAsyncErrors(async (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-  }).status(200).json({
-    success: true,
-    message: "Logged out successfully.",
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const user = await User.findOne({
+    forcePasswordToken: hashedToken,
+    forcePasswordTokenExpiry: { $gt: Date.now() },
   });
+  if (!user) return next(new ErrorHandler(400, "Invalid or expired token."));
+
+  user.password = newPassword;
+  user.forcePasswordChange = false;
+  user.forcePasswordToken = undefined;
+  user.forcePasswordTokenExpiry = undefined;
+  await user.save();
+
+  sendToken(user, 200, "Password changed successfully.", res);
 });
 
-/**
- * CURRENT USER
- */
-export const getUser = catchAsyncErrors(async (req, res) => {
-  res.status(200).json({ success: true, user: req.user });
-});
-
-/**
- * FORGOT PASSWORD
- */
-export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Forgot Password
+------------------------- */
+const forgotPassword = catchAsyncErrors(async (req, res, next) => {
   const email = req.body.email?.toLowerCase().trim();
+  if (!email) return next(new ErrorHandler(400, "Email is required."));
+
   const user = await User.findOne({ email });
-  if (!user) return next(new ErrorHandler("User not found.", 404));
-  if (!user.accountVerified) return next(new ErrorHandler("Account not verified.", 403));
+  if (!user) return next(new ErrorHandler(404, "User not found."));
+  if (!user.accountVerified) return next(new ErrorHandler(403, "Account not verified."));
 
   const resetToken = user.getResetPasswordToken();
   await user.save({ validateBeforeSave: false });
@@ -238,84 +215,130 @@ export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
     await sendEmail({ email: user.email, subject: "Password Reset Request", message });
     res.status(200).json({ success: true, message: `Email sent to ${user.email}` });
   } catch (err) {
-    console.error(err);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
-    return next(new ErrorHandler("Email could not be sent.", 500));
+    return next(new ErrorHandler(500, "Email could not be sent."));
   }
 });
 
-/**
- * RESET PASSWORD
- */
-export const resetPassword = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Reset Password
+------------------------- */
+const resetPassword = catchAsyncErrors(async (req, res, next) => {
   const { token } = req.params;
   const { password, confirmPassword } = req.body;
-
-  if (password !== confirmPassword) {
-    return next(new ErrorHandler(400, "Passwords do not match."));
-  }
-
+  if (password !== confirmPassword) return next(new ErrorHandler(400, "Passwords do not match."));
   validatePassword(password);
 
   const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
   const user = await User.findOne({
     resetPasswordToken: hashedToken,
     resetPasswordExpire: { $gt: Date.now() },
   });
-
   if (!user) return next(new ErrorHandler(400, "Invalid or expired token."));
 
   user.password = password;
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
+  user.forcePasswordChange = false;
   await user.save();
 
   sendToken(user, 200, "Password reset successful.", res);
 });
 
-/**
- * UPDATE PASSWORD (logged in)
- */
-export const updatePassword = catchAsyncErrors(async (req, res, next) => {
+/* -------------------------
+   Update Password (logged in)
+------------------------- */
+const updatePassword = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findById(req.user._id).select("+password");
   const { currentPassword, newPassword, confirmNewPassword } = req.body;
-
   if (!currentPassword || !newPassword || !confirmNewPassword)
-    return next(new ErrorHandler(400, "Please provide all password fields."));
+    return next(new ErrorHandler(400, "All password fields are required."));
 
-  const isMatch = await bcrypt.compare(currentPassword, user.password);
+  const isMatch = await user.comparePassword(currentPassword);
   if (!isMatch) return next(new ErrorHandler(401, "Current password incorrect."));
-
-  if (newPassword !== confirmNewPassword)
-    return next(new ErrorHandler(400, "New passwords do not match."));
-
+  if (newPassword !== confirmNewPassword) return next(new ErrorHandler(400, "Passwords do not match."));
   validatePassword(newPassword);
 
   user.password = newPassword;
   await user.save();
-
   sendToken(user, 200, "Password updated successfully.", res);
 });
 
-/**
- * CHANGE PASSWORD (force change e.g. Supplier)
- */
-export const changePassword = catchAsyncErrors(async (req, res, next) => {
-  const { currentPassword, newPassword } = req.body;
-  const user = await User.findById(req.user._id).select("+password +forcePasswordChange");
-  if (!user) return next(new ErrorHandler(404, "User not found."));
+/* -------------------------
+   Logout
+------------------------- */
+const logout = catchAsyncErrors(async (req, res, next) => {
+  if (req.user) {
+    const user = await User.findById(req.user._id).select("+refreshToken");
+    if (user) {
+      user.refreshToken = undefined;
+      await user.save({ validateBeforeSave: false });
+    }
+  }
 
-  const isValid = await bcrypt.compare(currentPassword, user.password);
-  if (!isValid) return next(new ErrorHandler(401, "Current password incorrect."));
-
-  validatePassword(newPassword);
-
-  user.password = newPassword;
-  user.forcePasswordChange = false;
-  await user.save();
-
-  sendToken(user, 200, "Password changed successfully.", res);
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+  }).status(200).json({ success: true, message: "Logged out successfully." });
 });
+
+/* -------------------------
+   Get Current User
+------------------------- */
+const getUser = catchAsyncErrors(async (req, res) => {
+  res.status(200).json({ success: true, user: req.user });
+});
+
+/* -------------------------
+   Refresh Token
+------------------------- */
+const refreshToken = catchAsyncErrors(async (req, res, next) => {
+  const token = req.cookies.refreshToken;
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Refresh token required." });
+  }
+
+  const user = await User.findOne({ refreshToken: token }).select(
+    "+password +refreshToken +forcePasswordChange"
+  );
+  if (!user) return res.status(401).json({ success: false, message: "Invalid refresh token." });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+    if (decoded.id !== user._id.toString()) {
+      return res.status(401).json({ success: false, message: "Token mismatch." });
+    }
+
+    if (user.forcePasswordChange) {
+      return res.status(403).json({
+        success: false,
+        requiresPasswordChange: true,
+        message: "User must change password first.",
+      });
+    }
+
+    await sendToken(user, 200, "Access token refreshed.", res);
+  } catch (err) {
+    return res.status(401).json({ success: false, message: "Refresh token expired or invalid." });
+  }
+});
+
+/* -------------------------
+   Exports
+------------------------- */
+export {
+  register,
+  verifyOTP,
+  resendOTP,
+  login,
+  forceChangePassword,
+  forgotPassword,
+  resetPassword,
+  updatePassword,
+  logout,
+  getUser,
+  refreshToken,
+};

@@ -1,3 +1,4 @@
+// src/components/supplier/SupplierSidebar.tsx
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -11,7 +12,7 @@ import {
   MdLogout,
 } from "react-icons/md";
 import { useDispatch } from "react-redux";
-import { toast } from "react-toastify";
+import toast from "react-hot-toast";
 import type { AppDispatch } from "../../redux/store";
 import { clearAuthState, logout } from "../../redux/slices/authSlice";
 
@@ -26,63 +27,30 @@ const SupplierSidebar: React.FC = () => {
   const navigate = useNavigate();
 
   const navLinks: NavLinkItem[] = [
-    {
-      to: "/supplier/dashboard",
-      label: "Dashboard",
-      icon: <MdDashboard size={20} />,
-    },
-    {
-      to: "/supplier/products",
-      label: "Manage Products",
-      icon: <MdInventory size={20} />,
-    },
-    {
-      to: "/supplier/products/add",
-      label: "Add Product",
-      icon: <MdAddBox size={20} />,
-    },
-    {
-      to: "/supplier/orders",
-      label: "Customer Orders",
-      icon: <MdReceipt size={20} />,
-    },
-    {
-      to: "/supplier/analytics",
-      label: "Sales Analytics",
-      icon: <MdTrendingUp size={20} />,
-    },
-    {
-      to: "/supplier/profile",
-      label: "Profile",
-      icon: <MdPerson size={20} />,
-    },
-    {
-      to: "/change-password",
-      label: "Change Password",
-      icon: <MdLock size={20} />,
-    },
+    { to: "/supplier/dashboard", label: "Dashboard", icon: <MdDashboard size={20} /> },
+    { to: "/supplier/products", label: "Manage Products", icon: <MdInventory size={20} /> },
+    { to: "/supplier/products/add", label: "Add Product", icon: <MdAddBox size={20} /> },
+    { to: "/supplier/orders", label: "Customer Orders", icon: <MdReceipt size={20} /> },
+    { to: "/supplier/analytics", label: "Sales Analytics", icon: <MdTrendingUp size={20} /> },
+    { to: "/supplier/profile", label: "Profile", icon: <MdPerson size={20} /> },
+    { to: "/change-password", label: "Change Password", icon: <MdLock size={20} /> },
   ];
 
   const handleLogout = async () => {
     try {
       dispatch(logout());
       dispatch(clearAuthState());
-      toast.success("Logged out successfully.");
+      toast.success("Logged out successfully ✅");
       navigate("/login");
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        toast.error(err.message || "Logout failed.");
-      } else {
-        toast.error("Logout failed.");
-      }
+      if (err instanceof Error) toast.error(err.message || "Logout failed ❌");
+      else toast.error("Logout failed ❌");
     }
   };
 
   return (
     <aside className="w-64 bg-white shadow-md min-h-screen flex flex-col">
-      <div className="p-6 border-b border-gray-200 text-xl font-bold text-gray-800">
-        Supplier Panel
-      </div>
+      <div className="p-6 border-b border-gray-200 text-xl font-bold text-gray-800">Supplier Panel</div>
 
       <nav className="flex flex-col p-4 space-y-2 flex-grow">
         {navLinks.map(({ to, label, icon }) => (

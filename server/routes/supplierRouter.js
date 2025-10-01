@@ -19,7 +19,6 @@ const router = express.Router();
 // -------------------------
 router.post(
   "/register",
-  isAuthenticated,
   upload.fields([
     { name: "idDocument", maxCount: 1 },
     { name: "businessLicense", maxCount: 1 },

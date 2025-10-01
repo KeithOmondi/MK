@@ -1,3 +1,4 @@
+// src/components/user/UserSidebar.tsx
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
@@ -15,7 +16,7 @@ import {
   MdSettings,
 } from "react-icons/md";
 import { useDispatch } from "react-redux";
-import { toast } from "react-toastify";
+import toast from "react-hot-toast";
 import type { AppDispatch } from "../../redux/store";
 import { clearAuthState, logout } from "../../redux/slices/authSlice";
 
@@ -32,90 +33,32 @@ const UserSidebar: React.FC = () => {
 
   const navLinks: NavLinkItem[] = [
     // === Main ===
-    {
-      to: "/dashboard",
-      label: "Dashboard",
-      icon: <MdDashboard size={20} />,
-      section: "Main",
-    },
-    {
-      to: "/user/orders",
-      label: "My Orders",
-      icon: <MdReceipt size={20} />,
-      section: "Main",
-    },
-    {
-      to: "/user/cart",
-      label: "My Cart",
-      icon: <MdShoppingCart size={20} />,
-      section: "Main",
-    },
-    {
-      to: "/user/wishlist",
-      label: "Wishlist",
-      icon: <MdFavorite size={20} />,
-      section: "Main",
-    },
+    { to: "/dashboard", label: "Dashboard", icon: <MdDashboard size={20} />, section: "Main" },
+    { to: "/user/orders", label: "My Orders", icon: <MdReceipt size={20} />, section: "Main" },
+    { to: "/user/cart", label: "My Cart", icon: <MdShoppingCart size={20} />, section: "Main" },
+    { to: "/user/wishlist", label: "Wishlist", icon: <MdFavorite size={20} />, section: "Main" },
 
     // === Account ===
-    {
-      to: "/user/profile",
-      label: "Profile",
-      icon: <MdPerson size={20} />,
-      section: "Account",
-    },
-    {
-      to: "/user/addresses",
-      label: "Addresses",
-      icon: <MdLocationOn size={20} />,
-      section: "Account",
-    },
-    {
-      to: "/user/payments",
-      label: "Payment Methods",
-      icon: <MdPayment size={20} />,
-      section: "Account",
-    },
-    {
-      to: "/user/coupons",
-      label: "Coupons & Rewards",
-      icon: <MdCardGiftcard size={20} />,
-      section: "Account",
-    },
-    {
-      to: "/user/settings",
-      label: "Account Settings",
-      icon: <MdSettings size={20} />,
-      section: "Account",
-    },
-    {
-      to: "/change-password",
-      label: "Change Password",
-      icon: <MdLock size={20} />,
-      section: "Account",
-    },
+    { to: "/user/profile", label: "Profile", icon: <MdPerson size={20} />, section: "Account" },
+    { to: "/user/addresses", label: "Addresses", icon: <MdLocationOn size={20} />, section: "Account" },
+    { to: "/user/payments", label: "Payment Methods", icon: <MdPayment size={20} />, section: "Account" },
+    { to: "/user/coupons", label: "Coupons & Rewards", icon: <MdCardGiftcard size={20} />, section: "Account" },
+    { to: "/user/settings", label: "Account Settings", icon: <MdSettings size={20} />, section: "Account" },
+    { to: "/change-password", label: "Change Password", icon: <MdLock size={20} />, section: "Account" },
 
     // === Support ===
-    {
-      to: "/user/support",
-      label: "Help & Support",
-      icon: <MdHelp size={20} />,
-      section: "Support",
-    },
+    { to: "/user/support", label: "Help & Support", icon: <MdHelp size={20} />, section: "Support" },
   ];
 
   const handleLogout = async () => {
     try {
       dispatch(logout());
       dispatch(clearAuthState());
-      toast.success("Logged out successfully.");
+      toast.success("Logged out successfully ✅");
       navigate("/login");
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        toast.error(err.message || "Logout failed.");
-      } else {
-        toast.error("Logout failed.");
-      }
+      if (err instanceof Error) toast.error(err.message || "Logout failed ❌");
+      else toast.error("Logout failed ❌");
     }
   };
 
@@ -130,17 +73,13 @@ const UserSidebar: React.FC = () => {
   return (
     <aside className="w-64 bg-white shadow-md min-h-screen flex flex-col">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200 text-xl font-bold text-gray-800">
-        User Panel
-      </div>
+      <div className="p-6 border-b border-gray-200 text-xl font-bold text-gray-800">User Panel</div>
 
       {/* Navigation */}
       <nav className="flex flex-col p-4 flex-grow space-y-6">
         {Object.entries(groupedLinks).map(([section, links]) => (
           <div key={section}>
-            <h3 className="px-4 mb-2 text-xs font-semibold uppercase text-gray-500 tracking-wide">
-              {section}
-            </h3>
+            <h3 className="px-4 mb-2 text-xs font-semibold uppercase text-gray-500 tracking-wide">{section}</h3>
             <div className="flex flex-col space-y-2">
               {links.map(({ to, label, icon }) => (
                 <NavLink
