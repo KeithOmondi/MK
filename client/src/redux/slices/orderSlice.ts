@@ -3,9 +3,9 @@ import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/tool
 import type { RootState } from "../store";
 import api from "../../api/axios";
 
-/* ==========================
-   Types
-========================== */
+// ==========================
+// Types
+// ==========================
 export interface OrderItem {
   productId: string;
   name?: string;
@@ -45,15 +45,15 @@ export interface Order {
 export interface OrderState {
   orders: Order[];
   order: Order | null;
-  deliveredOrders: Order[]; // <-- new state for delivered orders
+  deliveredOrders: Order[];
   loading: boolean;
   error: string | null;
   success: boolean;
 }
 
-/* ==========================
-   Initial State
-========================== */
+// ==========================
+// Initial State
+// ==========================
 const initialState: OrderState = {
   orders: [],
   order: null,
@@ -63,154 +63,118 @@ const initialState: OrderState = {
   success: false,
 };
 
-/* ==========================
-   Thunks
-========================== */
+// ==========================
+// Thunks (CRUD)
+// ==========================
 
-// Fetch delivered orders by product for the current user
-export const fetchDeliveredOrdersByProduct = createAsyncThunk(
-  "orders/fetchDeliveredByProduct",
-  async (productId: string, { rejectWithValue }) => {
-    try {
-      const { data } = await api.get(`/orders/user-delivered?productId=${productId}`);
-      return data.data as Order[];
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
-
-export const createOrder = createAsyncThunk(
+// ✅ Create Order → Buyer
+export const createOrder = createAsyncThunk<Order, Partial<Order>>(
   "orders/create",
-  async (
-    {
-      items,
-      deliveryDetails,
-      paymentMethod,
-      totalAmount,
-      shippingCost,
-      coupon,
-    }: {
-      items: { productId: string; quantity: number; price: number }[];
-      deliveryDetails: DeliveryDetails;
-      paymentMethod: string;
-      totalAmount: number;
-      shippingCost: number;
-      coupon?: Coupon | null;
-    },
-    { rejectWithValue }
-  ) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await api.post("/orders/create", {
-        items,
-        deliveryDetails,
-        paymentMethod,
-        totalAmount,
-        shippingCost,
-        coupon,
-      });
-      return data.data as Order;
+      const { data } = await api.post("/orders/create", payload);
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Generic fetch (role handled by backend)
-export const fetchOrders = createAsyncThunk(
+// ✅ Get All Orders → Role-based (Buyer)
+export const fetchOrders = createAsyncThunk<Order[]>(
   "orders/fetchAll",
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await api.get("/orders/get");
-      return data.data as Order[];
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Admin-only fetch
-export const fetchAdminOrders = createAsyncThunk(
+// ✅ Get Single Order → Role-based (Buyer)
+export const fetchOrderById = createAsyncThunk<Order, string>(
+  "orders/fetchById",
+  async (id, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/orders/get/${id}`);
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+// ✅ Get Delivered Orders by Product → Buyer
+export const fetchDeliveredOrdersByProduct = createAsyncThunk<Order[], string>(
+  "orders/fetchDeliveredByProduct",
+  async (productId, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/orders/user-delivered?productId=${productId}`);
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+// ✅ Get Supplier Orders → Supplier
+export const fetchSupplierOrders = createAsyncThunk<Order[]>(
+  "orders/fetchSupplier",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get("/orders/get"); // Replace with supplier-specific endpoint if exists
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+// ✅ Get Admin Orders → Admin
+export const fetchAdminOrders = createAsyncThunk<Order[]>(
   "orders/fetchAdmin",
   async (_, { rejectWithValue }) => {
     try {
       const { data } = await api.get("/orders/admin-get");
-      return data.data as Order[];
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Supplier-only fetch
-export const fetchSupplierOrders = createAsyncThunk(
-  "orders/fetchSupplier",
-  async (_, { rejectWithValue }) => {
-    try {
-      const { data } = await api.get("/orders/get");
-      return data.data as Order[];
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
-
-// Fetch single
-export const fetchOrderById = createAsyncThunk(
-  "orders/fetchById",
-  async (id: string, { rejectWithValue }) => {
-    try {
-      const { data } = await api.get(`/orders/get/${id}`);
-      return data.data as Order;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
-
-// Update order status
-export const updateOrderStatus = createAsyncThunk(
+// ✅ Update Order Status → Admin
+export const updateOrderStatus = createAsyncThunk<Order, { id: string; status: string }>(
   "orders/updateStatus",
-  async ({ id, status }: { id: string; status: string }, { rejectWithValue }) => {
+  async ({ id, status }, { rejectWithValue }) => {
     try {
       const { data } = await api.put(`/orders/update/${id}/status`, { status });
-      return data.data as Order;
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Request refund (Buyer)
-export const requestRefund = createAsyncThunk(
-  "orders/requestRefund",
-  async (id: string, { rejectWithValue }) => {
+// ✅ Cancel Order → Buyer
+export const cancelOrder = createAsyncThunk<Order, string>(
+  "orders/cancel",
+  async (id, { rejectWithValue }) => {
     try {
-      const { data } = await api.post(`/orders/request/${id}/refund`);
-      return data.data as Order;
+      const { data } = await api.put(`/orders/cancel/${id}`);
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
 
-// Process refund (Admin)
-export const processRefund = createAsyncThunk(
-  "orders/processRefund",
-  async ({ id, action }: { id: string; action: "Approved" | "Rejected" }, { rejectWithValue }) => {
-    try {
-      const { data } = await api.put(`/orders/process/${id}/refund`, { action });
-      return data.data as Order;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
-
-// Delete order (Admin)
-export const deleteOrder = createAsyncThunk(
+// ✅ Delete Order → Admin
+export const deleteOrder = createAsyncThunk<string, string>(
   "orders/delete",
-  async (id: string, { rejectWithValue }) => {
+  async (id, { rejectWithValue }) => {
     try {
       await api.delete(`/orders/delete/${id}`);
       return id;
@@ -220,13 +184,13 @@ export const deleteOrder = createAsyncThunk(
   }
 );
 
-// Cancel order
-export const cancelOrder = createAsyncThunk(
-  "orders/cancel",
-  async (id: string, { rejectWithValue }) => {
+// Buyer requests a refund
+export const requestRefund = createAsyncThunk<Order, string>(
+  "orders/requestRefund",
+  async (orderId, { rejectWithValue }) => {
     try {
-      const { data } = await api.put(`/orders/cancel/${id}`);
-      return data.data as Order;
+      const { data } = await api.post(`/orders/request/${orderId}/refund`);
+      return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
@@ -234,9 +198,9 @@ export const cancelOrder = createAsyncThunk(
 );
 
 
-/* ==========================
-   Slice
-========================== */
+// ==========================
+// Slice
+// ==========================
 const orderSlice = createSlice({
   name: "orders",
   initialState,
@@ -244,37 +208,91 @@ const orderSlice = createSlice({
     resetOrderState: () => initialState,
   },
   extraReducers: (builder) => {
+    const pending = (state: OrderState) => {
+      state.loading = true;
+      state.error = null;
+    };
+    const rejected = (state: OrderState, action: any) => {
+      state.loading = false;
+      state.error = action.payload || "Something went wrong";
+    };
+
+    const handleArrayFulfilled = (state: OrderState, action: PayloadAction<Order[]>) => {
+      state.loading = false;
+      state.orders = action.payload;
+    };
+
     builder
-      // Create
-      .addCase(fetchDeliveredOrdersByProduct.pending, (state) => {
-        state.loading = true;
-        state.error = null;
+      // Thunks handling
+      .addCase(createOrder.pending, pending)
+      .addCase(createOrder.fulfilled, (state, action: PayloadAction<Order>) => {
+        state.loading = false;
+        state.orders.push(action.payload);
+        state.success = true;
       })
+      .addCase(createOrder.rejected, rejected)
+
+      .addCase(fetchOrders.pending, pending)
+      .addCase(fetchOrders.fulfilled, handleArrayFulfilled)
+      .addCase(fetchOrders.rejected, rejected)
+
+      .addCase(fetchOrderById.pending, pending)
+      .addCase(fetchOrderById.fulfilled, (state, action: PayloadAction<Order>) => {
+        state.loading = false;
+        state.order = action.payload;
+      })
+      .addCase(fetchOrderById.rejected, rejected)
+
+      .addCase(fetchDeliveredOrdersByProduct.pending, pending)
       .addCase(fetchDeliveredOrdersByProduct.fulfilled, (state, action: PayloadAction<Order[]>) => {
         state.loading = false;
         state.deliveredOrders = action.payload;
       })
-      .addCase(fetchDeliveredOrdersByProduct.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string;
-      });
+      .addCase(fetchDeliveredOrdersByProduct.rejected, rejected)
 
-    // ------------------------
-    // Keep all your existing extraReducers (createOrder, fetchOrders, fetchAdminOrders, etc.)
-    // ------------------------
+      .addCase(fetchSupplierOrders.pending, pending)
+      .addCase(fetchSupplierOrders.fulfilled, handleArrayFulfilled)
+      .addCase(fetchSupplierOrders.rejected, rejected)
+
+      .addCase(fetchAdminOrders.pending, pending)
+      .addCase(fetchAdminOrders.fulfilled, handleArrayFulfilled)
+      .addCase(fetchAdminOrders.rejected, rejected)
+
+      .addCase(updateOrderStatus.pending, pending)
+      .addCase(updateOrderStatus.fulfilled, (state, action: PayloadAction<Order>) => {
+        state.loading = false;
+        const idx = state.orders.findIndex(o => o._id === action.payload._id);
+        if (idx !== -1) state.orders[idx] = action.payload;
+      })
+      .addCase(updateOrderStatus.rejected, rejected)
+
+      .addCase(cancelOrder.pending, pending)
+      .addCase(cancelOrder.fulfilled, (state, action: PayloadAction<Order>) => {
+        state.loading = false;
+        const idx = state.orders.findIndex(o => o._id === action.payload._id);
+        if (idx !== -1) state.orders[idx] = action.payload;
+      })
+      .addCase(cancelOrder.rejected, rejected)
+
+      .addCase(deleteOrder.pending, pending)
+      .addCase(deleteOrder.fulfilled, (state, action: PayloadAction<string>) => {
+        state.loading = false;
+        state.orders = state.orders.filter(o => o._id !== action.payload);
+      })
+      .addCase(deleteOrder.rejected, rejected);
   },
 });
 
 export const { resetOrderState } = orderSlice.actions;
 export default orderSlice.reducer;
 
-/* ==========================
-   Selectors
-========================== */
+// ==========================
+// Selectors
+// ==========================
 export const selectOrders = (state: RootState) => state.orders.orders;
 export const selectOrder = (state: RootState) => state.orders.order;
-export const selectDeliveredOrders = (state: RootState) => state.orders.deliveredOrders; // <-- new selector
+export const selectDeliveredOrders = (state: RootState) => state.orders.deliveredOrders;
 export const selectOrderLoading = (state: RootState) => state.orders.loading;
 export const selectOrderError = (state: RootState) => state.orders.error;
 export const selectOrderById = (state: RootState, id: string) =>
-  state.orders.orders.find((o) => o._id === id) || null;
+  state.orders.orders.find(o => o._id === id) || null;

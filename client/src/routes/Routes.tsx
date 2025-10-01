@@ -35,6 +35,7 @@ import ThankYou from "../pages/ThankYou";
 import OrderDetails from "../pages/User/OrderDetails";
 import SupplierOrders from "../pages/Supplier/SupplierOrders";
 import SupplierOrderDetails from "../pages/Supplier/SupplierOrderDetails";
+import ForceChangePassword from "../pages/auth/ForceChangePassword";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -147,6 +148,7 @@ export const authRoutes = [
   { path: "/verify-otp", element: <VerifyOtp /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/password/reset/:token", element: <ResetPassword /> },
+  { path: "/force-change-password", element: <ForceChangePassword /> },
   { path: "/", element: <HomePage /> },
   { path: "/customer-service", element: <CustomerService /> },
   { path: "/deals", element: <TodaysDeal /> },

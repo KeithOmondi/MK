@@ -1,3 +1,4 @@
+// src/pages/LoginPage.tsx
 import React, { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -13,11 +14,12 @@ interface FormData {
 const LoginPage: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({ email: "", password: "" });
   const [remember, setRemember] = useState(false);
-  const [toastShown, setToastShown] = useState(false);
+
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-
-  const { loading, token, error, user } = useSelector((state: RootState) => state.auth);
+  const { loading, token, error, user, forcePasswordChange } = useSelector(
+    (state: RootState) => state.auth
+  );
 
   // Restore remembered email
   useEffect(() => {
@@ -28,36 +30,38 @@ const LoginPage: React.FC = () => {
     }
   }, []);
 
-  // Redirect based on role or force password change
+  // Handle login redirects
   useEffect(() => {
-    if (token && user) {
-      if (user.forcePasswordChange) {
-        if (!toastShown) {
-          toast.info("You must change your temporary password first.");
-          setToastShown(true);
-        }
-        navigate("/password/reset", { replace: true });
-        return;
-      }
+    if (!token || !user) return;
 
-      let path = "/dashboard"; // fallback
-      if (user.role === "Admin") path = "/admin/dashboard";
-      else if (user.role === "Supplier") path = "/supplier/dashboard";
-      else if (user.role === "Customer") path = "/dashboard";
-
-      if (!toastShown) {
-        toast.success("Login successful");
-        setToastShown(true);
-      }
-      navigate(path, { replace: true });
+    if (forcePasswordChange) {
+      navigate("/force-change-password", { replace: true });
+      return;
     }
-  }, [token, user, navigate, toastShown]);
 
-  // Show error toast and reset auth state
+    let path = "/dashboard";
+    switch (user.role) {
+      case "Admin":
+        path = "/admin/dashboard";
+        break;
+      case "Supplier":
+        path = "/supplier/dashboard";
+        break;
+      case "Customer":
+      default:
+        path = "/dashboard";
+        break;
+    }
+
+    toast.success("Login successful");
+    navigate(path, { replace: true });
+  }, [token, user, forcePasswordChange, navigate]);
+
+  // Show error toast on auth error
   useEffect(() => {
     if (error) {
       toast.error(error);
-      setFormData((prev) => ({ ...prev, password: "" })); // clear password on error
+      setFormData((prev) => ({ ...prev, password: "" }));
       dispatch(clearAuthState());
     }
   }, [error, dispatch]);
@@ -66,7 +70,7 @@ const LoginPage: React.FC = () => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const { email, password } = formData;
 
@@ -75,15 +79,14 @@ const LoginPage: React.FC = () => {
       return;
     }
 
-    if (remember) {
-      localStorage.setItem("rememberEmail", email);
-    } else {
-      localStorage.removeItem("rememberEmail");
-    }
+    if (remember) localStorage.setItem("rememberEmail", email);
+    else localStorage.removeItem("rememberEmail");
 
-    dispatch(login({ email, password }))
-      .unwrap()
-      .catch((err) => toast.error(err));
+    try {
+      await dispatch(login({ email, password })).unwrap();
+    } catch (err: any) {
+      toast.error(err.message || "Login failed");
+    }
   };
 
   return (
@@ -96,7 +99,9 @@ const LoginPage: React.FC = () => {
 
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
-            <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1">Email Address</label>
+            <label htmlFor="email" className="block text-sm font-semibold text-gray-800 mb-1">
+              Email Address
+            </label>
             <input
               type="email"
               id="email"
@@ -107,11 +112,14 @@ const LoginPage: React.FC = () => {
               autoComplete="email"
               placeholder="you@example.com"
               className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
+              disabled={loading}
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-gray-800 mb-1">Password</label>
+            <label htmlFor="password" className="block text-sm font-semibold text-gray-800 mb-1">
+              Password
+            </label>
             <input
               type="password"
               id="password"
@@ -122,6 +130,7 @@ const LoginPage: React.FC = () => {
               autoComplete="current-password"
               placeholder="••••••••"
               className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
+              disabled={loading}
             />
           </div>
 
@@ -132,10 +141,14 @@ const LoginPage: React.FC = () => {
                 checked={remember}
                 onChange={(e) => setRemember(e.target.checked)}
                 className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 transition duration-150 ease-in-out"
+                disabled={loading}
               />
               <span className="ml-2 select-none">Remember me</span>
             </label>
-            <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition duration-150 ease-in-out">
+            <Link
+              to="/forgot-password"
+              className="font-medium text-indigo-600 hover:text-indigo-700 hover:underline transition duration-150 ease-in-out"
+            >
               Forgot password?
             </Link>
           </div>
@@ -151,9 +164,18 @@ const LoginPage: React.FC = () => {
           >
             {loading ? (
               <>
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 Signing in...
               </>
@@ -165,7 +187,10 @@ const LoginPage: React.FC = () => {
 
         <p className="text-sm text-center text-gray-600 mt-6">
           Don't have an account?{" "}
-          <Link to="/register" className="text-indigo-600 font-semibold hover:underline hover:text-indigo-700 transition duration-150 ease-in-out">
+          <Link
+            to="/register"
+            className="text-indigo-600 font-semibold hover:underline hover:text-indigo-700 transition duration-150 ease-in-out"
+          >
             Sign up
           </Link>
         </p>

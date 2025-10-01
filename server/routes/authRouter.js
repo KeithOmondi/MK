@@ -6,6 +6,7 @@ import {
   login,
   logout,
   register,
+  resendOTP,
   resetPassword,
   updatePassword,
   verifyOTP,
@@ -24,5 +25,7 @@ router.post("/password/forgot", forgotPassword);
 router.put("/password/reset/:token", resetPassword);
 router.put("/password/update", isAuthenticated, updatePassword);
 router.put("/change-password", isAuthenticated, changePassword);
+router.post("/otp/resend", resendOTP);
+
 
 export default router;

@@ -3,9 +3,14 @@ import { User } from "../models/userModel.js";
 import { catchAsyncErrors } from "./catchAsyncErrors.js";
 import ErrorHandler from "./errorMiddlewares.js";
 
-// ✅ Authentication middleware
+// Authentication middleware
 export const isAuthenticated = catchAsyncErrors(async (req, res, next) => {
-  const { token } = req.cookies;
+  let token = req.cookies?.token;
+
+  // Also support Authorization header
+  if (!token && req.headers.authorization?.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
 
   if (!token) {
     return next(new ErrorHandler(401, "Please log in to access this resource."));
@@ -13,7 +18,6 @@ export const isAuthenticated = catchAsyncErrors(async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Include role in query if needed for extra validation
     req.user = await User.findById(decoded.id).select("+role");
 
     if (!req.user) {
@@ -26,7 +30,7 @@ export const isAuthenticated = catchAsyncErrors(async (req, res, next) => {
   }
 });
 
-// ✅ Authorization middleware (role-based)
+// Authorization middleware
 export const isAuthorized = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
@@ -42,6 +46,6 @@ export const isAuthorized = (...roles) => {
       );
     }
 
-    next(); // user is authorized
+    next();
   };
 };

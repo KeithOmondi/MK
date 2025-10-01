@@ -10,6 +10,24 @@ import { sendEmail } from "../utils/sendMail.js";
 import crypto from "crypto";
 
 /**
+ * PASSWORD VALIDATION HELPER
+ */
+const validatePassword = (password) => {
+  if (!validator.isStrongPassword(password, {
+    minLength: 8,
+    minLowercase: 1,
+    minUppercase: 1,
+    minNumbers: 1,
+    minSymbols: 1,
+  })) {
+    throw new ErrorHandler(
+      400,
+      "Password must be at least 8 chars, with uppercase, lowercase, number, and symbol."
+    );
+  }
+};
+
+/**
  * REGISTER
  */
 export const register = catchAsyncErrors(async (req, res, next) => {
@@ -23,11 +41,7 @@ export const register = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler(400, "Invalid email address."));
   }
 
-  if (password.length < 8 || password.length > 20) {
-    return next(
-      new ErrorHandler(400, "Password must be between 8 and 20 characters.")
-    );
-  }
+  validatePassword(password);
 
   const existingUser = await User.findOne({ email, accountVerified: true });
   if (existingUser) return next(new ErrorHandler(400, "User already exists."));
@@ -38,7 +52,7 @@ export const register = catchAsyncErrors(async (req, res, next) => {
   const newUser = new User({
     name,
     email,
-    password, // raw password -> will be hashed in model pre-save hook
+    password,
     verificationAttempts: 1,
     lastAttemptAt: new Date(),
   });
@@ -67,20 +81,32 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findOne({ email, accountVerified: false });
   if (!user) return next(new ErrorHandler(404, "No unverified user found."));
 
-  if (user.verificationCode !== Number(otp)) {
-    return next(new ErrorHandler(400, "Invalid OTP."));
+  // Check max attempts
+  if (user.verificationAttempts >= 5) {
+    return next(new ErrorHandler(
+      429,
+      "Maximum verification attempts reached. Please request a new OTP."
+    ));
   }
 
-  if (Date.now() > new Date(user.verificationCodeExpiry).getTime()) {
+  // Check expiry
+  if (!user.verificationCode || Date.now() > new Date(user.verificationCodeExpiry).getTime()) {
     return next(new ErrorHandler(400, "OTP expired. Please request a new one."));
   }
 
+  if (user.verificationCode !== Number(otp)) {
+    user.verificationAttempts += 1;
+    user.lastAttemptAt = new Date();
+    await user.save({ validateBeforeSave: false });
+    return next(new ErrorHandler(400, "Invalid OTP."));
+  }
+
+  // Successful verification
   user.accountVerified = true;
   user.verificationCode = undefined;
   user.verificationCodeExpiry = undefined;
   user.verificationAttempts = 0;
   user.lastAttemptAt = undefined;
-
   await user.save();
 
   res.status(200).json({
@@ -90,10 +116,54 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
 });
 
 /**
+ * RESEND OTP
+ */
+export const resendOTP = catchAsyncErrors(async (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) return next(new ErrorHandler(400, "Email is required."));
+
+  const user = await User.findOne({ email, accountVerified: false });
+  if (!user) return next(new ErrorHandler(404, "No unverified user found."));
+
+  // Cooldown (e.g., 1 minute)
+  const cooldown = 60 * 1000;
+  if (user.lastAttemptAt && Date.now() - user.lastAttemptAt.getTime() < cooldown) {
+    return next(new ErrorHandler(
+      429,
+      "Please wait 1 minute before requesting another OTP."
+    ));
+  }
+
+  // Max attempts check
+  if (user.verificationAttempts >= 5) {
+    return next(new ErrorHandler(
+      429,
+      "Maximum verification attempts reached. Please contact support."
+    ));
+  }
+
+  const code = user.generateVerificationCode();
+  await user.save({ validateBeforeSave: false });
+
+  await sendVerificationCode(email, code);
+
+  res.status(200).json({
+    success: true,
+    message: "New OTP sent to your email.",
+  });
+});
+
+
+/**
  * LOGIN
  */
 export const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
+
+  // Log the incoming request
+  console.log("📥 Incoming request:", req.path, req.body);
+
   if (!email || !password)
     return next(new ErrorHandler(400, "Please provide both email and password."));
 
@@ -127,11 +197,16 @@ export const login = catchAsyncErrors(async (req, res, next) => {
   sendToken(user, 200, "Login successful", res);
 });
 
+
 /**
  * LOGOUT
  */
 export const logout = catchAsyncErrors(async (req, res) => {
-  res.clearCookie("token").status(200).json({
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+  }).status(200).json({
     success: true,
     message: "Logged out successfully.",
   });
@@ -163,6 +238,7 @@ export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
     await sendEmail({ email: user.email, subject: "Password Reset Request", message });
     res.status(200).json({ success: true, message: `Email sent to ${user.email}` });
   } catch (err) {
+    console.error(err);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpire = undefined;
     await user.save({ validateBeforeSave: false });
@@ -181,6 +257,8 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler(400, "Passwords do not match."));
   }
 
+  validatePassword(password);
+
   const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
   const user = await User.findOne({
@@ -190,7 +268,7 @@ export const resetPassword = catchAsyncErrors(async (req, res, next) => {
 
   if (!user) return next(new ErrorHandler(400, "Invalid or expired token."));
 
-  user.password = password; // raw -> model will hash
+  user.password = password;
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
   await user.save();
@@ -214,7 +292,9 @@ export const updatePassword = catchAsyncErrors(async (req, res, next) => {
   if (newPassword !== confirmNewPassword)
     return next(new ErrorHandler(400, "New passwords do not match."));
 
-  user.password = newPassword; // raw -> model will hash
+  validatePassword(newPassword);
+
+  user.password = newPassword;
   await user.save();
 
   sendToken(user, 200, "Password updated successfully.", res);
@@ -231,7 +311,9 @@ export const changePassword = catchAsyncErrors(async (req, res, next) => {
   const isValid = await bcrypt.compare(currentPassword, user.password);
   if (!isValid) return next(new ErrorHandler(401, "Current password incorrect."));
 
-  user.password = newPassword; // raw -> model will hash
+  validatePassword(newPassword);
+
+  user.password = newPassword;
   user.forcePasswordChange = false;
   await user.save();
 

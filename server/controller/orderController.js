@@ -1,28 +1,39 @@
+// server/controllers/orderController.js
 import asyncHandler from "express-async-handler";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 import Supplier from "../models/Supplier.js";
 
-/* ------------------------ CREATE ORDER ------------------------ */
+/* =======================================================
+   CREATE ORDER (Escrow Held)
+======================================================= */
 export const createOrder = asyncHandler(async (req, res) => {
   const { items, deliveryDetails, paymentMethod, shippingCost = 0, coupon } = req.body;
 
-  if (!items || items.length === 0) throw new Error("No items in order");
-  if (!paymentMethod) throw new Error("Payment method is required");
+  if (!items || items.length === 0) {
+    return res.status(400).json({ success: false, message: "No items in order" });
+  }
+  if (!paymentMethod) {
+    return res.status(400).json({ success: false, message: "Payment method is required" });
+  }
 
   let totalAmount = 0;
   let totalCommission = 0;
 
-  // Prepare order items with escrow calculations
   const orderItems = await Promise.all(
     items.map(async (item) => {
       const product = await Product.findById(item.productId).populate("supplier");
+
       if (!product) throw new Error(`Product not found: ${item.productId}`);
-      if (product.stock && product.stock < item.quantity)
+      if (product.stock && product.stock < item.quantity) {
         throw new Error(`Not enough stock for ${product.name}`);
+      }
+      if (!product.supplier) {
+        throw new Error(`Product supplier not found for ${product.name}`);
+      }
 
       const price = product.price;
-      const commissionPercentage = 10; // Admin profit
+      const commissionPercentage = 10; // Admin profit %
       const commission = (price * item.quantity * commissionPercentage) / 100;
       const escrowAmount = price * item.quantity - commission;
 
@@ -36,15 +47,13 @@ export const createOrder = asyncHandler(async (req, res) => {
         seller: product.supplier._id,
         commissionPercentage,
         escrowAmount,
-        escrowStatus: "Held", // escrow held until delivery
+        escrowStatus: "Held",
       };
     })
   );
 
-  // Use first item's seller as main supplier for the order
   const supplier = orderItems[0].seller;
 
-  // Create the order
   const order = new Order({
     buyer: req.user._id,
     items: orderItems,
@@ -62,7 +71,6 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const createdOrder = await order.save();
 
-  // Populate for frontend
   const populatedOrder = await createdOrder.populate([
     { path: "buyer", select: "name email" },
     { path: "supplier", select: "shopName" },
@@ -76,15 +84,19 @@ export const createOrder = asyncHandler(async (req, res) => {
   });
 });
 
-/* ------------------------ GET ALL ORDERS ------------------------ */
+/* =======================================================
+   GET ORDERS (User/Admin/Supplier)
+======================================================= */
 export const getOrders = asyncHandler(async (req, res) => {
   let orders;
+
   if (req.user.role === "Admin") {
     orders = await Order.find().populate("buyer items.product supplier");
   } else if (req.user.role === "Supplier") {
     const supplierDoc = await Supplier.findOne({ user: req.user._id });
-    if (!supplierDoc)
+    if (!supplierDoc) {
       return res.status(403).json({ success: false, message: "Not a supplier" });
+    }
     orders = await Order.find({ supplier: supplierDoc._id }).populate(
       "buyer items.product supplier"
     );
@@ -95,16 +107,21 @@ export const getOrders = asyncHandler(async (req, res) => {
   res.json({ success: true, data: orders });
 });
 
-/* ------------------------ GET ORDER BY ID ------------------------ */
+/* =======================================================
+   GET ORDER BY ID
+======================================================= */
 export const getOrderById = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id).populate("buyer items.product supplier");
   if (!order) throw new Error("Order not found");
 
   const isBuyer = order.buyer._id.toString() === req.user._id.toString();
   let isSupplier = false;
+
   if (req.user.role === "Supplier") {
     const supplierDoc = await Supplier.findOne({ user: req.user._id });
-    isSupplier = supplierDoc && order.supplier._id.toString() === supplierDoc._id.toString();
+    if (supplierDoc) {
+      isSupplier = order.supplier._id.toString() === supplierDoc._id.toString();
+    }
   }
 
   if (!isBuyer && !isSupplier && req.user.role !== "Admin") {
@@ -114,7 +131,9 @@ export const getOrderById = asyncHandler(async (req, res) => {
   res.json({ success: true, data: order });
 });
 
-/* ------------------------ UPDATE STATUS ------------------------ */
+/* =======================================================
+   UPDATE ORDER STATUS
+======================================================= */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
   const allowed = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
@@ -136,7 +155,9 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Order status updated", data: updated });
 });
 
-/* ------------------------ ADD REVIEW ------------------------ */
+/* =======================================================
+   ADD REVIEW
+======================================================= */
 export const addReview = asyncHandler(async (req, res) => {
   const { productId, rating, comment } = req.body;
   const order = await Order.findById(req.params.id);
@@ -155,7 +176,9 @@ export const addReview = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Review added", data: order });
 });
 
-/* ------------------------ REQUEST REFUND (with Escrow) ------------------------ */
+/* =======================================================
+   REFUNDS (Request + Process)
+======================================================= */
 export const requestRefund = asyncHandler(async (req, res) => {
   const { reason } = req.body;
   const order = await Order.findById(req.params.id);
@@ -183,14 +206,12 @@ export const requestRefund = asyncHandler(async (req, res) => {
   });
 });
 
-/* ------------------------ PROCESS REFUND (Admin with Escrow) ------------------------ */
 export const processRefund = asyncHandler(async (req, res) => {
   const { action } = req.body; // "Approved" or "Rejected"
   const order = await Order.findById(req.params.id);
   if (!order) throw new Error("Order not found");
 
   if (req.user.role !== "Admin") throw new Error("Only admin can process refunds");
-
   if (!order.refund || !order.refund.requested) {
     throw new Error("No refund requested for this order");
   }
@@ -213,14 +234,12 @@ export const processRefund = asyncHandler(async (req, res) => {
   }
 
   await order.save();
-  res.json({
-    success: true,
-    message: `Refund ${action}`,
-    data: order,
-  });
+  res.json({ success: true, message: `Refund ${action}`, data: order });
 });
 
-/* ------------------------ DELETE ORDER (Admin) ------------------------ */
+/* =======================================================
+   ADMIN & SUPPLIER ORDER MANAGEMENT
+======================================================= */
 export const deleteOrder = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) throw new Error("Order not found");
@@ -228,7 +247,6 @@ export const deleteOrder = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Order deleted" });
 });
 
-/* ------------------------ CANCEL ORDER (Buyer) ------------------------ */
 export const cancelOrder = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ message: "Order not found" });
@@ -236,18 +254,18 @@ export const cancelOrder = asyncHandler(async (req, res) => {
   if (order.buyer.toString() !== req.user._id.toString()) {
     return res.status(403).json({ message: "Not authorized" });
   }
-
   if (["Shipped", "Delivered"].includes(order.status)) {
     return res.status(400).json({ message: "Cannot cancel after shipping" });
   }
 
   order.status = "Cancelled";
   await order.save();
-
   res.json({ success: true, data: order });
 });
 
-/* ------------------------ RELEASE ESCROW ------------------------ */
+/* =======================================================
+   ESCROW RELEASE
+======================================================= */
 export const releaseEscrow = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) throw new Error("Order not found");
@@ -267,8 +285,9 @@ export const releaseEscrow = asyncHandler(async (req, res) => {
   res.json({ success: true, message: "Escrow released to seller(s)", data: order });
 });
 
-
-/* ------------------------ GET ALL ORDERS (Admin only) ------------------------ */
+/* =======================================================
+   ADMIN / SUPPLIER ORDER FETCH
+======================================================= */
 export const getAllOrdersForAdmin = asyncHandler(async (req, res) => {
   if (req.user.role !== "Admin") {
     return res.status(403).json({ success: false, message: "Not authorized" });
@@ -282,7 +301,6 @@ export const getAllOrdersForAdmin = asyncHandler(async (req, res) => {
   res.json({ success: true, data: orders });
 });
 
-/* ------------------------ GET ALL ORDERS (Supplier only) ------------------------ */
 export const getAllOrdersForSupplier = asyncHandler(async (req, res) => {
   if (req.user.role !== "Supplier") {
     return res.status(403).json({ success: false, message: "Not authorized" });
@@ -290,9 +308,7 @@ export const getAllOrdersForSupplier = asyncHandler(async (req, res) => {
 
   const supplierDoc = await Supplier.findOne({ user: req.user._id });
   if (!supplierDoc) {
-    return res
-      .status(404)
-      .json({ success: false, message: "Supplier account not found" });
+    return res.status(404).json({ success: false, message: "Supplier account not found" });
   }
 
   const orders = await Order.find({ supplier: supplierDoc._id })
@@ -303,21 +319,18 @@ export const getAllOrdersForSupplier = asyncHandler(async (req, res) => {
   res.json({ success: true, data: orders });
 });
 
-// server/controllers/orderController.js
-export const getDeliveredOrdersByUserAndProduct = async (req, res) => {
-  try {
-    const userId = req.user._id;
-    const { productId } = req.query;
+/* =======================================================
+   GET DELIVERED ORDERS (for Reviews)
+======================================================= */
+export const getDeliveredOrdersByUserAndProduct = asyncHandler(async (req, res) => {
+  const userId = req.user._id;
+  const { productId } = req.query;
 
-    const orders = await Order.find({
-      userId,
-      status: "Delivered",
-      "items.productId": productId,
-    }).sort({ createdAt: -1 });
+  const orders = await Order.find({
+    buyer: userId,
+    status: "Delivered",
+    "items.product": productId,
+  }).sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, orders });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
+  res.status(200).json({ success: true, orders });
+});

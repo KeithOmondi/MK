@@ -38,7 +38,7 @@ const productSchema = new mongoose.Schema(
     supplier: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Supplier",
-      required: true,
+      required: [true, "Every product must belong to a supplier"]
     },
     ratings: [
       {

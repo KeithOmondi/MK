@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { toast } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 import {
   fetchOrderById,
@@ -17,6 +17,7 @@ import {
   addReview as addReviewSlice,
   selectReviewsByProduct,
 } from "../../redux/slices/reviewSlice";
+
 import type { AppDispatch, RootState } from "../../redux/store";
 import type { Review as ReviewSliceType } from "../../redux/slices/reviewSlice";
 
@@ -67,6 +68,7 @@ const StarRating: React.FC<{
   </div>
 );
 
+// ------------------------ Status Badge Helper ------------------------
 const getStatusClasses = (status: string) => {
   switch (status) {
     case "Delivered":
@@ -95,6 +97,15 @@ const OrderDetails: React.FC = () => {
 
   const [productReviewStates, setProductReviewStates] = useState<ProductReviewState>({});
 
+  // Precompute reviews for all products outside the map
+  const reviewsByProduct = useSelector((state: RootState) => {
+    const obj: Record<string, ReviewSliceType[]> = {};
+    order?.items.forEach((item) => {
+      obj[item.productId] = selectReviewsByProduct(item.productId)(state);
+    });
+    return obj;
+  });
+
   useEffect(() => {
     if (id) dispatch(fetchOrderById(id));
   }, [dispatch, id]);
@@ -109,7 +120,7 @@ const OrderDetails: React.FC = () => {
 
   const handleReviewSubmit = (productId: string) => {
     if (order?.status !== "Delivered") {
-      toast.error("You can only review products from delivered orders.");
+      toast.error("You can only review delivered products.");
       return;
     }
 
@@ -118,7 +129,7 @@ const OrderDetails: React.FC = () => {
     const comment = reviewState?.comment?.trim() || "";
 
     if (!rating || !comment) {
-      toast.error("Please provide a rating and comment before submitting.");
+      toast.error("Please provide both rating and comment.");
       return;
     }
 
@@ -131,7 +142,7 @@ const OrderDetails: React.FC = () => {
       })
     )
       .unwrap()
-      .then(() => toast.success("Review submitted successfully!"))
+      .then(() => toast.success("Review submitted!"))
       .catch((err) => toast.error(err));
 
     setProductReviewStates((prev) => ({
@@ -141,18 +152,26 @@ const OrderDetails: React.FC = () => {
   };
 
   const handleRefund = () => {
-    if (window.confirm("Are you sure you want to request a refund for this order?")) {
-      dispatch(requestRefund(id!));
-      toast("Refund request initiated.");
-      navigate("/user/orders");
+    if (window.confirm("Request a refund for this order?")) {
+      dispatch(requestRefund(id!))
+        .unwrap()
+        .then(() => {
+          toast.success("Refund request sent.");
+          navigate("/user/orders");
+        })
+        .catch((err) => toast.error(err));
     }
   };
 
   const handleCancel = () => {
-    if (window.confirm("Are you sure you want to cancel this order? This action cannot be undone.")) {
-      dispatch(cancelOrder(id!));
-      toast("Order cancelled successfully.");
-      navigate("/user/orders");
+    if (window.confirm("Cancel this order? This action cannot be undone.")) {
+      dispatch(cancelOrder(id!))
+        .unwrap()
+        .then(() => {
+          toast.success("Order cancelled.");
+          navigate("/user/orders");
+        })
+        .catch((err) => toast.error(err));
     }
   };
 
@@ -168,14 +187,12 @@ const OrderDetails: React.FC = () => {
     <div className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b">
-        <h1 className="text-3xl font-extrabold text-gray-800">
-          Order #{order._id?.substring(0, 8) || "N/A"}
-        </h1>
+        <h1 className="text-3xl font-extrabold text-gray-800">Order #{order._id?.substring(0, 8)}</h1>
         <div className="flex items-center gap-4">
           <span
             className={`px-4 py-1.5 font-semibold text-sm rounded-full uppercase tracking-wider border-2 ${statusClasses}`}
           >
-            {order.status || "Status Unavailable"}
+            {order.status}
           </span>
           {(order.status === "Pending" || order.status === "Processing") && (
             <button
@@ -201,10 +218,9 @@ const OrderDetails: React.FC = () => {
         {/* Items */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-xl font-bold text-gray-700 mb-4">Items in Your Order</h2>
-          {order.items.map((item: OrderItem) => {
+          {order.items.map((item: OrderItem, index) => {
             const product = item.product || { _id: item.productId, name: "Product", image: "", price: item.price };
-
-            const existingReview = useSelector(selectReviewsByProduct(item.productId)).find(
+            const existingReview = reviewsByProduct[item.productId]?.find(
               (r: ReviewSliceType) => r.orderId === order._id
             );
 
@@ -213,16 +229,12 @@ const OrderDetails: React.FC = () => {
 
             return (
               <div
-                key={item.productId}
+                key={`${item.productId}-${index}`}
                 className="bg-white border rounded-xl p-5 flex flex-col md:flex-row gap-5 shadow-lg hover:shadow-xl"
               >
                 <div className="flex items-center gap-4 w-full md:w-2/3">
                   {product.image && (
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-24 h-24 object-cover rounded-lg border"
-                    />
+                    <img src={product.image} alt={product.name} className="w-24 h-24 object-cover rounded-lg border" />
                   )}
                   <div>
                     <p className="font-extrabold text-lg text-gray-900 mb-1">{product.name}</p>
