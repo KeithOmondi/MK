@@ -164,9 +164,24 @@ export const updatePassword = createAsyncThunk<
   }
 });
 
+export const resendOTP = createAsyncThunk<
+  { message: string },
+  { email: string },
+  { rejectValue: RejectValue }
+>("auth/resendOTP", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.post("/auth/otp/resend", payload);
+    return data;
+  } catch (err: any) {
+    return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to resend OTP");
+  }
+});
+
+
+// ✅ updated to POST
 export const logoutUser = createAsyncThunk("auth/logoutUser", async () => {
   try {
-    await api.get("/auth/logout");
+    await api.post("/auth/logout");
   } finally {
     removeAccessToken();
   }
@@ -229,6 +244,41 @@ const authSlice = createSlice({
       rejectedHandler(state, action, "OTP verification failed")
     );
 
+// Resend OTP
+builder.addCase(resendOTP.pending, (state) => {
+  state.loading = true;
+  state.error = null;
+  state.success = null;
+});
+
+builder.addCase(resendOTP.fulfilled, (state, action) => {
+  state.loading = false;
+  // Always expect backend to return { message: string }
+  state.success = action.payload.message;
+});
+
+builder.addCase(resendOTP.rejected, (state, action) => {
+  state.loading = false;
+
+  let message = "Failed to resend OTP";
+
+  if (typeof action.payload === "string") {
+    message = action.payload;
+  } else if (
+    action.payload &&
+    typeof action.payload === "object" &&
+    "message" in action.payload
+  ) {
+    message = (action.payload as { message: string }).message;
+  } else if (action.error?.message) {
+    message = action.error.message;
+  }
+
+  state.error = message;
+});
+
+
+
     // Login
     builder.addCase(login.pending, pendingHandler);
     builder.addCase(login.fulfilled, (state, action) => {
@@ -239,7 +289,9 @@ const authSlice = createSlice({
       state.forcePasswordChange =
         action.payload.requiresPasswordChange || action.payload.user?.forcePasswordChange || false;
     });
-    builder.addCase(login.rejected, (state, action) => rejectedHandler(state, action, "Login failed"));
+    builder.addCase(login.rejected, (state, action) =>
+      rejectedHandler(state, action, "Login failed")
+    );
 
     // Refresh Token
     builder.addCase(refreshAccessToken.fulfilled, (state, action) => {

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+// src/pages/auth/LoginPage.tsx
+import React, {
+  useState,
+  useEffect,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-toastify";
@@ -11,14 +17,23 @@ interface FormData {
 }
 
 const LoginPage: React.FC = () => {
-  const [formData, setFormData] = useState<FormData>({ email: "", password: "" });
+  const [formData, setFormData] = useState<FormData>({
+    email: "",
+    password: "",
+  });
   const [remember, setRemember] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { loading, user, accessToken, error, success, forcePasswordChange } = useSelector(
-    (state: RootState) => state.auth
-  );
+
+  const {
+    loading,
+    user,
+    accessToken,
+    error,
+    success,
+    forcePasswordChange,
+  } = useSelector((state: RootState) => state.auth);
 
   // Restore remembered email
   useEffect(() => {
@@ -29,33 +44,41 @@ const LoginPage: React.FC = () => {
     }
   }, []);
 
-  // Handle login success or special states
+  // Handle login success + redirects
   useEffect(() => {
     if (!user) return;
 
+    // 🔑 Force password change flow
     if (forcePasswordChange) {
-      navigate("/force-change-password", { replace: true, state: { user } });
+      navigate("/force-change-password", {
+        replace: true,
+        state: { user },
+      });
       return;
     }
 
     if (!accessToken) return;
 
     toast.success(success || "Login successful ✅");
-    dispatch(clearAuthState());
 
+    // Role-based redirects
     const rolePaths: Record<string, string> = {
       Admin: "/admin/dashboard",
       Supplier: "/supplier/dashboard",
       User: "/dashboard",
     };
+
     navigate(rolePaths[user.role] || "/dashboard", { replace: true });
+
+    // Reset transient state after redirect
+    setTimeout(() => dispatch(clearAuthState()), 500);
   }, [user, accessToken, forcePasswordChange, success, navigate, dispatch]);
 
   // Handle errors
   useEffect(() => {
     if (error) {
       toast.error(error);
-      setFormData((prev) => ({ ...prev, password: "" }));
+      setFormData((prev) => ({ ...prev, password: "" })); // clear password field
       dispatch(clearAuthState());
     }
   }, [error, dispatch]);
@@ -78,19 +101,8 @@ const LoginPage: React.FC = () => {
       : localStorage.removeItem("rememberEmail");
 
     try {
-      const result = await dispatch(login({ email, password })).unwrap();
-
-      if (result.requiresPasswordChange) {
-        navigate("/force-change-password", { replace: true, state: { user: result.user } });
-        return;
-      }
-
-      if (result.accountLocked) {
-        toast.error(`Account locked. Attempts left: ${result.attemptsLeft}`);
-        return;
-      }
-
-      toast.success(result.message || "Login successful ✅");
+      await dispatch(login({ email, password })).unwrap();
+      // Navigation handled by useEffect after successful login
     } catch (err: any) {
       toast.error(err || "Login failed");
     }
@@ -99,30 +111,51 @@ const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6 lg:p-8">
       <div className="max-w-md w-full bg-white shadow-2xl rounded-2xl p-8 sm:p-10 space-y-7 border border-gray-100">
+        {/* Header */}
         <div className="text-center">
-          <h2 className="text-4xl font-extrabold text-gray-900 leading-tight">Welcome Back! 👋</h2>
+          <h2 className="text-4xl font-extrabold text-gray-900 leading-tight">
+            Welcome Back! 👋
+          </h2>
           <p className="mt-2 text-lg text-gray-600">Sign in to your account</p>
         </div>
 
+        {/* Form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
-          {["email", "password"].map((field) => (
-            <div key={field}>
-              <label className="block text-sm font-semibold text-gray-800 mb-1">
-                {field === "email" ? "Email Address" : "Password"}
-              </label>
-              <input
-                type={field}
-                name={field}
-                value={formData[field as keyof FormData]}
-                onChange={handleChange}
-                required
-                placeholder={field === "email" ? "you@example.com" : "••••••••"}
-                className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
-                disabled={loading}
-              />
-            </div>
-          ))}
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              placeholder="you@example.com"
+              className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
+              disabled={loading}
+            />
+          </div>
 
+          {/* Password */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              required
+              placeholder="••••••••"
+              className="mt-1 block w-full px-5 py-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 placeholder-gray-400 text-base"
+              disabled={loading}
+            />
+          </div>
+
+          {/* Remember me + Forgot password */}
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-700 cursor-pointer">
               <input
@@ -142,6 +175,7 @@ const LoginPage: React.FC = () => {
             </Link>
           </div>
 
+          {/* Submit button */}
           <button
             type="submit"
             disabled={loading}
@@ -181,8 +215,9 @@ const LoginPage: React.FC = () => {
           </button>
         </form>
 
+        {/* Footer */}
         <p className="text-sm text-center text-gray-600 mt-6">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link
             to="/register"
             className="text-indigo-600 font-semibold hover:underline hover:text-indigo-700"

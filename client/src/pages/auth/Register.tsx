@@ -10,6 +10,7 @@ interface SignupForm {
   name: string;
   email: string;
   password: string;
+  confirmPassword: string;
 }
 
 const Signup: React.FC = () => {
@@ -22,6 +23,7 @@ const Signup: React.FC = () => {
     name: "",
     email: "",
     password: "",
+    confirmPassword: "",
   });
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -30,7 +32,19 @@ const Signup: React.FC = () => {
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    dispatch(register(formData));
+
+    if (formData.password !== formData.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    dispatch(
+      register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+      })
+    );
   };
 
   useEffect(() => {
@@ -40,7 +54,6 @@ const Signup: React.FC = () => {
       navigate("/verify-otp", { state: { email: formData.email } });
     }
 
-    // Cleanup function that returns void
     return () => {
       dispatch(clearAuthState());
     };
@@ -54,6 +67,7 @@ const Signup: React.FC = () => {
         </h2>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
+          {/* Full Name */}
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
               Full Name
@@ -69,6 +83,7 @@ const Signup: React.FC = () => {
             />
           </div>
 
+          {/* Email */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
               Email Address
@@ -84,6 +99,7 @@ const Signup: React.FC = () => {
             />
           </div>
 
+          {/* Password */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700">
               Password
@@ -92,13 +108,34 @@ const Signup: React.FC = () => {
               type="password"
               id="password"
               required
+              minLength={6}
               onChange={handleChange}
               value={formData.password}
               className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm"
               placeholder="••••••••"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Must be at least 6 characters.
+            </p>
           </div>
 
+          {/* Confirm Password */}
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+              Confirm Password
+            </label>
+            <input
+              type="password"
+              id="confirmPassword"
+              required
+              onChange={handleChange}
+              value={formData.confirmPassword}
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}

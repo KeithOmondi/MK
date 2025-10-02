@@ -1,4 +1,5 @@
-import { saveAccessToken } from "../utils/tokenStorage";
+// src/api/axios.ts
+import { saveAccessToken, getAccessToken, removeAccessToken } from "../utils/tokenStorage";
 import axios, { type InternalAxiosRequestConfig } from "axios";
 
 // ==========================
@@ -13,7 +14,7 @@ const api = axios.create({
 // Request Interceptor
 // ==========================
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem("accessToken");
+  const token = getAccessToken();
   if (token && config.headers) {
     config.headers["Authorization"] = `Bearer ${token}`;
   }
@@ -28,6 +29,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Prevent infinite loop
+    if (originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
     // Skip auto-refresh for these endpoints
     const skipRefreshEndpoints = [
       "/auth/login",
@@ -39,9 +45,12 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
+      originalRequest &&
       !skipRefreshEndpoints.includes(originalRequest.url || "")
     ) {
       try {
+        originalRequest._retry = true;
+
         // Call refresh token endpoint
         const { data } = await axios.post(
           "http://localhost:8000/api/v1/auth/refresh-token",
@@ -49,17 +58,19 @@ api.interceptors.response.use(
           { withCredentials: true }
         );
 
-        // Save new access token
-        if (data.accessToken) saveAccessToken(data.accessToken);
+        // ✅ Save new access token using helper
+        const newToken = saveAccessToken(data.accessToken);
 
-        // Update Authorization header for original request
-        originalRequest.headers["Authorization"] = `Bearer ${data.accessToken}`;
+        if (newToken) {
+          // Update Authorization header for original request
+          originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+        }
 
-        // Retry original request
+        // Retry original request with updated token
         return api(originalRequest);
       } catch (refreshError) {
-        // If refresh fails, remove token
-        localStorage.removeItem("accessToken");
+        // If refresh fails, clear stored token
+        removeAccessToken();
         return Promise.reject(refreshError);
       }
     }

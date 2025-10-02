@@ -1,10 +1,5 @@
 import mongoose from "mongoose";
 
-const OTPSchema = new mongoose.Schema({
-  code: String,
-  expiresAt: Date,
-});
-
 const supplierSchema = new mongoose.Schema(
   {
     user: {
@@ -37,7 +32,7 @@ const supplierSchema = new mongoose.Schema(
     idDocument: { url: String, publicId: String },
     taxNumber: { type: String },
     businessLicense: { url: String, publicId: String },
-    passportPhoto: { url: String, publicId: String }, // <-- new field
+    passportPhoto: { url: String, publicId: String },
 
     // -----------------------------
     // Shop Info
@@ -68,7 +63,6 @@ const supplierSchema = new mongoose.Schema(
     },
     verified: { type: Boolean, default: false },
     rating: { type: Number, default: 0 },
-    otp: OTPSchema,
 
     // Linked products
     products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],

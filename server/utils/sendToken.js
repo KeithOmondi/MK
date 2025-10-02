@@ -1,11 +1,10 @@
 // utils/sendToken.js
 export const sendToken = async (user, statusCode, message, res) => {
-  // Generate tokens
-  const accessToken = user.getJwtToken(); // short-lived (e.g. 15m)
-  const refreshToken = user.getRefreshToken(); // long-lived (e.g. 7d)
+  // Generate short-lived access token
+  const accessToken = user.getJwtToken();
 
-  // Save refresh token in DB (so we can invalidate later if needed)
-  user.refreshToken = refreshToken;
+  // Generate + set refresh token (hashed in DB, raw returned here)
+  const refreshToken = user.setRefreshToken();
   await user.save({ validateBeforeSave: false });
 
   // Convert to plain object and strip sensitive fields

@@ -1,7 +1,5 @@
-// routes/authRoutes.js
 import express from "express";
 import {
-  //changePassword,
   forgotPassword,
   getUser,
   login,
@@ -12,7 +10,9 @@ import {
   resetPassword,
   updatePassword,
   verifyOTP,
+  // future: getLoginHistory, forceChangePassword
 } from "../controller/authController.js";
+
 import { isAuthenticated } from "../middlewares/authMiddleware.js";
 import { registerValidation, validateRequest } from "../middlewares/authValidator.js";
 
@@ -24,17 +24,26 @@ const router = express.Router();
 router.post("/register", registerValidation, validateRequest, register);
 router.post("/verify-otp", verifyOTP);
 router.post("/login", login);
-router.get("/logout", isAuthenticated, logout);
+
+// 🔐 Logout should be POST (better for state changes)
+router.post("/logout", isAuthenticated, logout);
+
+// Profile
 router.get("/me", isAuthenticated, getUser);
 
-// ✅ New Refresh Token endpoint
+// ✅ Refresh Token endpoint
 router.post("/refresh-token", refreshToken);
 
+// Password management
 router.post("/password/forgot", forgotPassword);
 router.put("/password/reset/:token", resetPassword);
 router.put("/password/update", isAuthenticated, updatePassword);
-//router.put("/change-password", isAuthenticated, changePassword);
 
+// OTP
 router.post("/otp/resend", resendOTP);
+
+// 🔐 Future security routes (not wired yet)
+// router.get("/logins", isAuthenticated, getLoginHistory);
+// router.post("/force-change-password", forceChangePassword);a
 
 export default router;
