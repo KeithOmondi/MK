@@ -20,8 +20,6 @@ import {
   selectReviewLoading,
 } from "../redux/slices/reviewSlice";
 
-import { fetchDeliveredOrdersByProduct, selectDeliveredOrders } from "../redux/slices/orderSlice";
-
 import type { AppDispatch, RootState } from "../redux/store";
 import type { Review as ReviewSliceType } from "../redux/slices/reviewSlice";
 
@@ -32,7 +30,7 @@ import Footer from "../components/common/Footer";
 const PRIMARY_COLOR = "indigo-600";
 const ACCENT_COLOR = "orange-500";
 
-// StarRating Component
+// ------------------------ StarRating Component ------------------------
 const StarRating: React.FC<{
   rating: number;
   setRating?: (r: number) => void;
@@ -45,9 +43,9 @@ const StarRating: React.FC<{
         key={star}
         type="button"
         onClick={() => setRating && !readOnly && setRating(star)}
-        className={`${size} ${
-          star <= rating ? "text-yellow-500" : "text-gray-300 hover:text-yellow-400"
-        } ${readOnly ? "cursor-default" : "cursor-pointer"}`}
+        className={`${size} ${star <= rating ? "text-yellow-500" : "text-gray-300 hover:text-yellow-400"} ${
+          readOnly ? "cursor-default" : "cursor-pointer"
+        }`}
         disabled={readOnly}
         aria-label={`Rate ${star} stars`}
       >
@@ -57,6 +55,7 @@ const StarRating: React.FC<{
   </div>
 );
 
+// ------------------------ ProductPage Component ------------------------
 const ProductPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -69,8 +68,6 @@ const ProductPage: React.FC = () => {
   const reviews = useSelector((state: RootState) => selectReviewsByProduct(id || "")(state));
   const reviewsLoading = useSelector(selectReviewLoading);
 
-  const deliveredOrders = useSelector(selectDeliveredOrders);
-
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
   const [reviewState, setReviewState] = useState<{ rating: number; comment: string }>({
@@ -78,32 +75,24 @@ const ProductPage: React.FC = () => {
     comment: "",
   });
 
-  // Determine if user can review (has delivered order for this product)
-  const canReview = useMemo(() => {
-    if (!product || !deliveredOrders) return false;
-    return deliveredOrders.some((o) => o.items.some((item) => item.productId === product._id));
-  }, [product, deliveredOrders]);
-
-  // Fetch product, reviews, and delivered orders
-  useEffect(() => {
-    if (id) {
-      dispatch(fetchProductById(id));
-      dispatch(getReviewsByProduct(id));
-      dispatch(fetchDeliveredOrdersByProduct(id));
-    }
-  }, [dispatch, id]);
-
-  // Set initial image
-  useEffect(() => {
-    if (product?.images?.[0]?.url) setSelectedImage(product.images[0].url);
-  }, [product]);
-
   const avgRating = useMemo(() => {
     if (!reviews || reviews.length === 0) return 0;
     return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
   }, [reviews]);
 
   const isInStock = !!(product?.stock && product.stock > 0);
+
+  // ------------------------ Fetch product & reviews ------------------------
+  useEffect(() => {
+    if (id) {
+      dispatch(fetchProductById(id));
+      dispatch(getReviewsByProduct(id));
+    }
+  }, [dispatch, id]);
+
+  useEffect(() => {
+    if (product?.images?.[0]?.url) setSelectedImage(product.images[0].url);
+  }, [product]);
 
   // ------------------------ Handlers ------------------------
   const handleAddToCart = () => {
@@ -123,19 +112,13 @@ const ProductPage: React.FC = () => {
   };
 
   const handleBuyNow = () => {
-    if (!product) return;
     handleAddToCart();
-    setTimeout(() => navigate("/cart"), 1000);
+    setTimeout(() => navigate("/cart"), 500);
   };
 
   const handleReviewSubmit = () => {
     if (!id || !reviewState.rating || !reviewState.comment.trim()) {
       toast.error("Please provide a rating and comment.");
-      return;
-    }
-
-    if (!canReview) {
-      toast.error("You can only review products you have received.");
       return;
     }
 
@@ -299,32 +282,26 @@ const ProductPage: React.FC = () => {
           </h2>
 
           {/* Add Review Form */}
-          {canReview ? (
-            <div className="bg-white border border-gray-200 p-4 rounded-xl mb-6">
-              <p className="font-semibold text-gray-700 mb-2">Leave a Review</p>
-              <StarRating
-                rating={reviewState.rating}
-                setRating={(r) => setReviewState((prev) => ({ ...prev, rating: r }))}
-              />
-              <textarea
-                value={reviewState.comment}
-                onChange={(e) => setReviewState((prev) => ({ ...prev, comment: e.target.value }))}
-                placeholder="Share your thoughts..."
-                rows={3}
-                className="w-full border rounded-lg p-3 my-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <button
-                onClick={handleReviewSubmit}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Post Review
-              </button>
-            </div>
-          ) : (
-            <p className="text-gray-500 mb-6">
-              You can only leave a review after receiving this product.
-            </p>
-          )}
+          <div className="bg-white border border-gray-200 p-4 rounded-xl mb-6">
+            <p className="font-semibold text-gray-700 mb-2">Leave a Review</p>
+            <StarRating
+              rating={reviewState.rating}
+              setRating={(r) => setReviewState((prev) => ({ ...prev, rating: r }))}
+            />
+            <textarea
+              value={reviewState.comment}
+              onChange={(e) => setReviewState((prev) => ({ ...prev, comment: e.target.value }))}
+              placeholder="Share your thoughts..."
+              rows={3}
+              className="w-full border rounded-lg p-3 my-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <button
+              onClick={handleReviewSubmit}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Post Review
+            </button>
+          </div>
 
           {/* Existing Reviews */}
           {reviewsLoading && <p className="text-gray-500">Loading reviews...</p>}

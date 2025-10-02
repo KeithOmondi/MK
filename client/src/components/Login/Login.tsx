@@ -26,14 +26,8 @@ const LoginPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
 
-  const {
-    loading,
-    user,
-    accessToken,
-    error,
-    success,
-    forcePasswordChange,
-  } = useSelector((state: RootState) => state.auth);
+  const { loading, user, accessToken, error, success, forcePasswordChange } =
+    useSelector((state: RootState) => state.auth);
 
   // Restore remembered email
   useEffect(() => {
@@ -102,7 +96,7 @@ const LoginPage: React.FC = () => {
 
     try {
       await dispatch(login({ email, password })).unwrap();
-      // Navigation handled by useEffect after successful login
+      // Navigation handled by useEffect
     } catch (err: any) {
       toast.error(err || "Login failed");
     }

@@ -29,12 +29,6 @@ interface Product {
   price: number;
 }
 
-interface OrderItem {
-  productId: string;
-  quantity: number;
-  price: number;
-  product?: Product;
-}
 
 interface ProductReviewState {
   [productId: string]: {
@@ -68,7 +62,7 @@ const StarRating: React.FC<{
   </div>
 );
 
-// ------------------------ Status Badge Helper ------------------------
+// ------------------------ Status Badge Helpers ------------------------
 const getStatusClasses = (status: string) => {
   switch (status) {
     case "Delivered":
@@ -85,6 +79,17 @@ const getStatusClasses = (status: string) => {
   }
 };
 
+const getEscrowClasses = (status: "Held" | "Released" | "Refunded") => {
+  switch (status) {
+    case "Held":
+      return "bg-yellow-200 text-yellow-800";
+    case "Released":
+      return "bg-green-200 text-green-800";
+    case "Refunded":
+      return "bg-red-200 text-red-800";
+  }
+};
+
 // ------------------------ Main Component ------------------------
 const OrderDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -97,7 +102,7 @@ const OrderDetails: React.FC = () => {
 
   const [productReviewStates, setProductReviewStates] = useState<ProductReviewState>({});
 
-  // Precompute reviews for all products outside the map
+  // Precompute reviews for all products
   const reviewsByProduct = useSelector((state: RootState) => {
     const obj: Record<string, ReviewSliceType[]> = {};
     order?.items.forEach((item) => {
@@ -218,8 +223,13 @@ const OrderDetails: React.FC = () => {
         {/* Items */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-xl font-bold text-gray-700 mb-4">Items in Your Order</h2>
-          {order.items.map((item: OrderItem, index) => {
-            const product = item.product || { _id: item.productId, name: "Product", image: "", price: item.price };
+          {order.items.map((item, index) => {
+            // Type guard for product object
+            const product: Product =
+              typeof item.productId === "object"
+                ? item.productId
+                : { _id: item.productId, name: "Product", image: "", price: item.price };
+
             const existingReview = reviewsByProduct[item.productId]?.find(
               (r: ReviewSliceType) => r.orderId === order._id
             );
@@ -241,7 +251,12 @@ const OrderDetails: React.FC = () => {
                     <p className="text-sm text-gray-600">
                       Quantity: <span className="font-semibold">{item.quantity}</span>
                     </p>
-                    <p className="text-md font-bold text-green-700">Ksh {product.price?.toFixed(2)}</p>
+                    <p className="text-md font-bold text-green-700">Ksh {product.price.toFixed(2)}</p>
+                    {item.escrowStatus && (
+                      <span className={`ml-2 px-2 py-1 rounded-full text-xs font-semibold ${getEscrowClasses(item.escrowStatus)}`}>
+                        Escrow: {item.escrowStatus}
+                      </span>
+                    )}
                   </div>
                 </div>
 
