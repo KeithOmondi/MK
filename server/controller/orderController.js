@@ -8,15 +8,36 @@ import Supplier from "../models/Supplier.js";
    CREATE ORDER (Escrow Held)
 ======================================================= */
 export const createOrder = asyncHandler(async (req, res) => {
-  const { items, deliveryDetails, paymentMethod, shippingCost = 0, coupon } = req.body;
+  const {
+    items,
+    deliveryDetails = {},
+    paymentMethod,
+    shippingCost = 0,
+    coupon,
+  } = req.body;
 
-  if (!items || items.length === 0) {
+  // -------------------------
+  // Validation
+  // -------------------------
+  if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: "No items in order" });
   }
+
   if (!paymentMethod) {
     return res.status(400).json({ success: false, message: "Payment method is required" });
   }
 
+  const delivery = {
+    address: deliveryDetails.address || "N/A",
+    city: deliveryDetails.city || "",
+    state: deliveryDetails.state || "",
+    country: deliveryDetails.country || "",
+    phone: deliveryDetails.phone || "N/A",
+  };
+
+  // -------------------------
+  // Calculate totals and prepare order items
+  // -------------------------
   let totalAmount = 0;
   let totalCommission = 0;
 
@@ -25,11 +46,9 @@ export const createOrder = asyncHandler(async (req, res) => {
       const product = await Product.findById(item.productId).populate("supplier");
 
       if (!product) throw new Error(`Product not found: ${item.productId}`);
-      if (product.stock && product.stock < item.quantity) {
+      if (!product.supplier) throw new Error(`Product supplier not found for ${product.name}`);
+      if (product.stock !== undefined && product.stock < item.quantity) {
         throw new Error(`Not enough stock for ${product.name}`);
-      }
-      if (!product.supplier) {
-        throw new Error(`Product supplier not found for ${product.name}`);
       }
 
       const price = product.price;
@@ -54,6 +73,9 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const supplier = orderItems[0].seller;
 
+  // -------------------------
+  // Create Order
+  // -------------------------
   const order = new Order({
     buyer: req.user._id,
     items: orderItems,
@@ -61,7 +83,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     totalAmount,
     totalCommission,
     totalEscrowHeld: totalAmount - totalCommission,
-    shippingDetails: deliveryDetails,
+    deliveryDetails: delivery, // <-- corrected field
     paymentMethod,
     shippingCost,
     coupon: coupon || null,
@@ -83,6 +105,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     data: populatedOrder,
   });
 });
+
 
 /* =======================================================
    GET ORDERS (User/Admin/Supplier)

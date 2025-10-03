@@ -26,11 +26,8 @@ const getAccessToken = async () => {
 /* ------------------------ INITIATE STK PUSH ------------------------ */
 export const initiateLipPay = asyncHandler(async (req, res) => {
   const { orderId, phoneNumber } = req.body;
-
   if (!orderId || !phoneNumber) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Order ID and phone number are required" });
+    return res.status(400).json({ success: false, message: "Order ID and phone number are required" });
   }
 
   const order = await Order.findById(orderId);
@@ -38,24 +35,36 @@ export const initiateLipPay = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: "Order not found" });
   }
 
-  // Sanitize phone
-  let sanitizedPhone = phoneNumber.replace(/\D/g, "");
-  if (!sanitizedPhone.startsWith("254")) {
-    sanitizedPhone = "254" + sanitizedPhone.slice(-9);
-  }
+  // ✅ Sanitize phone
+let sanitizedPhone = phoneNumber.replace(/\D/g, ""); // remove non-digits
+
+if (sanitizedPhone.startsWith("0")) {
+  // 07XXXXXXXX or 01XXXXXXXX
+  sanitizedPhone = "254" + sanitizedPhone.slice(1);
+} else if (sanitizedPhone.startsWith("7") || sanitizedPhone.startsWith("1")) {
+  // 7XXXXXXXX or 1XXXXXXXX
+  sanitizedPhone = "254" + sanitizedPhone;
+} else if (!sanitizedPhone.startsWith("254")) {
+  return res
+    .status(400)
+    .json({ success: false, message: "Invalid phone number format" });
+}
+
+// ✅ Final validation (must be 12 digits, start with 2547 or 2541)
+if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
+  return res
+    .status(400)
+    .json({ success: false, message: "Invalid Safaricom phone number" });
+}
+
 
   const { LIPAPAY_SHORTCODE, LIPAPAY_PASSKEY, LIPAPAY_CALLBACK_URL } = process.env;
   if (!LIPAPAY_SHORTCODE || !LIPAPAY_PASSKEY || !LIPAPAY_CALLBACK_URL) {
-    return res
-      .status(500)
-      .json({ success: false, message: "Missing LipPay configuration" });
+    return res.status(500).json({ success: false, message: "Missing LipPay configuration" });
   }
 
   const timestamp = moment().format("YYYYMMDDHHmmss");
-  const password = Buffer.from(
-    LIPAPAY_SHORTCODE + LIPAPAY_PASSKEY + timestamp
-  ).toString("base64");
-  const accountReference = `ORDER_${orderId}`;
+  const password = Buffer.from(LIPAPAY_SHORTCODE + LIPAPAY_PASSKEY + timestamp).toString("base64");
 
   try {
     const accessToken = await getAccessToken();
@@ -70,22 +79,16 @@ export const initiateLipPay = asyncHandler(async (req, res) => {
       PartyB: LIPAPAY_SHORTCODE,
       PhoneNumber: sanitizedPhone,
       CallBackURL: LIPAPAY_CALLBACK_URL,
-      AccountReference: accountReference,
+      AccountReference: `ORDER_${orderId}`,
       TransactionDesc: "Payment for order",
     };
 
     const { data } = await axios.post(
       "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
       payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-      }
+      { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } }
     );
 
-    // Save pending payment
     if (data.CheckoutRequestID) {
       await PendingPayment.create({
         checkoutRequestId: data.CheckoutRequestID,
@@ -95,7 +98,7 @@ export const initiateLipPay = asyncHandler(async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       message: "Please complete your order by entering your M-Pesa PIN",
       orderId: order._id,
@@ -103,13 +106,10 @@ export const initiateLipPay = asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error("❌ LipPay initiation error:", error.response?.data || error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to initiate payment",
-      error: error.response?.data || error.message,
-    });
+    return res.status(500).json({ success: false, message: "Failed to initiate payment" });
   }
 });
+
 
 /* ------------------------ LIPAPAY CALLBACK ------------------------ */
 export const lipPayCallback = asyncHandler(async (req, res) => {

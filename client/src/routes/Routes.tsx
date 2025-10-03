@@ -36,6 +36,7 @@ import OrderDetails from "../pages/User/OrderDetails";
 import SupplierOrders from "../pages/Supplier/SupplierOrders";
 import SupplierOrderDetails from "../pages/Supplier/SupplierOrderDetails";
 import ForceChangePassword from "../pages/auth/ForceChangePassword";
+import AdminUsers from "../pages/admin/AdminUsers";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -92,6 +93,14 @@ export const adminRoutes = [
         element: (
             <AdminLayout>
                 <AdminSuppliers />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/customers",
+        element: (
+            <AdminLayout>
+                <AdminUsers />
             </AdminLayout>
         )
     },

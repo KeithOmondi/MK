@@ -1,11 +1,11 @@
-// src/store/slices/paymentSlice.ts
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
-import axios from "axios";
+import { createSelector } from "@reduxjs/toolkit";
+import api from "../../api/axios";
 import type { RootState } from "../store";
 
 /* ==========================
    Types
-   ========================== */
+========================== */
 interface PendingPayment {
   orderId: string;
   phoneNumber: string;
@@ -16,7 +16,7 @@ interface PendingPayment {
 interface PaymentStatusResponse {
   success: boolean;
   paymentStatus: "unpaid" | "paid" | "failed" | "refunded";
-  status: string; // backend's order.status
+  status: string;
   transactionId?: string;
   paidAt?: string;
   totalAmount?: number;
@@ -31,6 +31,14 @@ interface PaymentState {
   lastStatus?: PaymentStatusResponse;
 }
 
+interface MpesaPaymentPayload {
+  orderId: string;
+  phoneNumber: string;
+}
+
+/* ==========================
+   Initial State
+========================== */
 const initialState: PaymentState = {
   loading: false,
   error: null,
@@ -41,58 +49,63 @@ const initialState: PaymentState = {
 };
 
 /* ==========================
-   Async Thunks
-   ========================== */
-// Initiate M-Pesa payment
+   Thunks
+========================== */
+// initiate M-Pesa (needs only orderId + phoneNumber)
 export const initiateMpesaPayment = createAsyncThunk<
   { message: string; orderId: string; phoneNumber: string },
-  { orderId: string; phoneNumber: string },
+  MpesaPaymentPayload,
   { rejectValue: string }
->("payment/initiateMpesa", async ({ orderId, phoneNumber }, { rejectWithValue }) => {
-  try {
-    const { data } = await axios.post(
-      "http://localhost:8000/api/v1/payments/mpesa/pay",
-      { orderId, phoneNumber },
-      { withCredentials: true }
-    );
+>(
+  "payment/initiateMpesa",
+  async ({ orderId, phoneNumber }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post("/payments/mpesa/pay", {
+        orderId,
+        phoneNumber,
+      });
 
-    return {
-      message: data.message || "Please complete your order by entering your M-Pesa PIN",
-      orderId,
-      phoneNumber,
-    };
-  } catch (err: any) {
-    return rejectWithValue(err.response?.data?.message || "Failed to initiate payment");
+      return {
+        message: data.message || "Please complete your order by entering your M-Pesa PIN",
+        orderId,
+        phoneNumber,
+      };
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || err.message || "Failed to initiate payment"
+      );
+    }
   }
-});
+);
 
-// Fetch payment status (polling)
 export const fetchPaymentStatus = createAsyncThunk<
   PaymentStatusResponse,
   { orderId: string },
   { rejectValue: string }
->("payment/fetchStatus", async ({ orderId }, { rejectWithValue }) => {
-  try {
-    const { data } = await axios.get(
-      `http://localhost:8000/api/v1/payments/status/${orderId}`,
-      { withCredentials: true }
-    );
-    return {
-      success: data.success,
-      paymentStatus: data.paymentStatus,
-      status: data.status,
-      transactionId: data.transactionId,
-      paidAt: data.paidAt,
-      totalAmount: data.totalAmount,
-    };
-  } catch (err: any) {
-    return rejectWithValue(err.response?.data?.message || "Failed to fetch status");
+>(
+  "payment/fetchStatus",
+  async ({ orderId }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/payments/status/${orderId}`);
+      return {
+        success: data.success,
+        paymentStatus: data.paymentStatus,
+        status: data.status,
+        transactionId: data.transactionId,
+        paidAt: data.paidAt,
+        totalAmount: data.totalAmount,
+      };
+    } catch (err: any) {
+      return rejectWithValue(
+        err.response?.data?.message || err.message || "Failed to fetch status"
+      );
+    }
   }
-});
+);
 
 /* ==========================
    Slice
-   ========================== */
+========================== */
 const paymentSlice = createSlice({
   name: "payment",
   initialState,
@@ -112,7 +125,6 @@ const paymentSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Initiate STK Push
       .addCase(initiateMpesaPayment.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -142,14 +154,9 @@ const paymentSlice = createSlice({
         state.success = false;
         state.error = action.payload as string;
       })
-
-      // Poll payment status
       .addCase(fetchPaymentStatus.fulfilled, (state, action) => {
         state.lastStatus = action.payload;
-
-        const payment = state.pendingPayments.find(
-          (p) => p.orderId === action.meta.arg.orderId
-        );
+        const payment = state.pendingPayments.find((p) => p.orderId === action.meta.arg.orderId);
 
         if (payment) {
           if (action.payload.paymentStatus === "paid") {
@@ -178,12 +185,17 @@ export default paymentSlice.reducer;
 
 /* ==========================
    Selectors
-   ========================== */
+========================== */
 export const selectPaymentLoading = (state: RootState) => state.payment.loading;
 export const selectPaymentError = (state: RootState) => state.payment.error;
 export const selectPaymentSuccess = (state: RootState) => state.payment.success;
 export const selectPaymentMessage = (state: RootState) => state.payment.message;
 export const selectPendingPayments = (state: RootState) => state.payment.pendingPayments;
 export const selectLastPaymentStatus = (state: RootState) => state.payment.lastStatus;
-export const selectPaymentByOrderId = (state: RootState, orderId: string) =>
-  state.payment.pendingPayments.find((p) => p.orderId === orderId);
+
+// Memoized selector to avoid rerender warnings
+export const makeSelectPaymentByOrderId = (orderId: string) =>
+  createSelector(
+    (state: RootState) => state.payment.pendingPayments,
+    (pendingPayments) => pendingPayments.find((p) => p.orderId === orderId)
+  );

@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
 import api from "../../api/axios";
 
 // ==========================
@@ -17,6 +17,7 @@ interface AuthState {
   loading: boolean;
   error: string | null;
   success: string | null;
+  users: User[]; // Admin all users
 }
 
 type RejectValue = string;
@@ -44,11 +45,14 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   success: null,
+  users: [],
 };
 
 // ==========================
 // Async Thunks
 // ==========================
+
+// ----- Auth Thunks -----
 export const register = createAsyncThunk<
   { message: string },
   { name: string; email: string; password: string },
@@ -173,12 +177,62 @@ export const updatePassword = createAsyncThunk<
   }
 });
 
-// ✅ updated to POST
 export const logoutUser = createAsyncThunk("auth/logoutUser", async () => {
   try {
     await api.post("/auth/logout");
   } finally {
     removeAccessToken();
+  }
+});
+
+export const fetchAllUsers = createAsyncThunk<User[], void, { rejectValue: string }>(
+  "auth/fetchAllUsers",
+  async (_, thunkAPI) => {
+    try {
+      const { data } = await api.get("/user/all");
+      return data.data; // <-- users are inside `data`
+    } catch (err: any) {
+      return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to fetch users");
+    }
+  }
+);
+
+
+export const updateUserById = createAsyncThunk<
+  User,
+  { id: string; updates: Partial<User> },
+  { rejectValue: RejectValue }
+>("auth/updateUserById", async ({ id, updates }, thunkAPI) => {
+  try {
+    const { data } = await api.put(`/admin/users/${id}`, updates);
+    return data.user;
+  } catch (err: any) {
+    return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to update user");
+  }
+});
+
+export const deleteUserById = createAsyncThunk<string, string, { rejectValue: RejectValue }>(
+  "auth/deleteUserById",
+  async (id, thunkAPI) => {
+    try {
+      await api.delete(`/admin/users/${id}`);
+      return id;
+    } catch (err: any) {
+      return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to delete user");
+    }
+  }
+);
+
+export const registerNewAdmin = createAsyncThunk<
+  User,
+  { name: string; email: string; password: string },
+  { rejectValue: RejectValue }
+>("auth/registerNewAdmin", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.post("/admin/register", payload);
+    return data.user;
+  } catch (err: any) {
+    return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to register admin");
   }
 });
 
@@ -209,6 +263,7 @@ const authSlice = createSlice({
       state.error = null;
       state.success = null;
     };
+
     const rejectedHandler = (state: AuthState, action: any, defaultMsg: string) => {
       state.loading = false;
       let message = defaultMsg;
@@ -218,102 +273,69 @@ const authSlice = createSlice({
       state.error = message;
     };
 
-    // Register
-    builder.addCase(register.pending, pendingHandler);
-    builder.addCase(register.fulfilled, (state, action) => {
+    // --------------------------
+    // Auth Cases
+    // --------------------------
+    [register, verifyOTP, resendOTP, login, getUser, forgotPassword, resetPassword, updatePassword].forEach((thunk) => {
+      builder.addCase(thunk.pending, pendingHandler);
+      builder.addCase(thunk.rejected, (state, action) =>
+        rejectedHandler(state, action, "Operation failed")
+      );
+    });
+
+    builder.addCase(register.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
     });
-    builder.addCase(register.rejected, (state, action) =>
-      rejectedHandler(state, action, "Registration failed")
-    );
 
-    // Verify OTP
-    builder.addCase(verifyOTP.pending, pendingHandler);
-    builder.addCase(verifyOTP.fulfilled, (state, action) => {
+    builder.addCase(verifyOTP.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
     });
-    builder.addCase(verifyOTP.rejected, (state, action) =>
-      rejectedHandler(state, action, "OTP verification failed")
-    );
 
-    // Resend OTP
-    builder.addCase(resendOTP.pending, pendingHandler);
-    builder.addCase(resendOTP.fulfilled, (state, action) => {
+    builder.addCase(resendOTP.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
     });
-    builder.addCase(resendOTP.rejected, (state, action) =>
-      rejectedHandler(state, action, "Failed to resend OTP")
-    );
 
-    // Login
-    builder.addCase(login.pending, pendingHandler);
-    builder.addCase(login.fulfilled, (state, action) => {
+    builder.addCase(login.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
       if (action.payload.accessToken) state.accessToken = saveAccessToken(action.payload.accessToken);
       state.user = action.payload.user || null;
     });
-    builder.addCase(login.rejected, (state, action) =>
-      rejectedHandler(state, action, "Login failed")
-    );
 
-    // Refresh Token
-    builder.addCase(refreshAccessToken.fulfilled, (state, action) => {
-      state.accessToken = saveAccessToken(action.payload.accessToken);
-    });
-    builder.addCase(refreshAccessToken.rejected, (state) => {
-      state.accessToken = null;
-      state.user = null;
-    });
-
-    // Get User
-    builder.addCase(getUser.pending, pendingHandler);
-    builder.addCase(getUser.fulfilled, (state, action) => {
+    builder.addCase(getUser.fulfilled, (state, action: any) => {
       state.loading = false;
       state.user = action.payload.user;
     });
-    builder.addCase(getUser.rejected, (state, action) => {
-      rejectedHandler(state, action, "Failed to fetch user");
-      state.user = null;
-      state.accessToken = null;
-    });
 
-    // Forgot Password
-    builder.addCase(forgotPassword.pending, pendingHandler);
-    builder.addCase(forgotPassword.fulfilled, (state, action) => {
+    builder.addCase(forgotPassword.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
     });
-    builder.addCase(forgotPassword.rejected, (state, action) =>
-      rejectedHandler(state, action, "Failed to send reset email")
-    );
 
-    // Reset Password
-    builder.addCase(resetPassword.pending, pendingHandler);
-    builder.addCase(resetPassword.fulfilled, (state, action) => {
+    builder.addCase(resetPassword.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
       if (action.payload.accessToken) state.accessToken = saveAccessToken(action.payload.accessToken);
       if (action.payload.user) state.user = action.payload.user;
     });
-    builder.addCase(resetPassword.rejected, (state, action) =>
-      rejectedHandler(state, action, "Password reset failed")
-    );
 
-    // Update Password
-    builder.addCase(updatePassword.pending, pendingHandler);
-    builder.addCase(updatePassword.fulfilled, (state, action) => {
+    builder.addCase(updatePassword.fulfilled, (state, action: any) => {
       state.loading = false;
       state.success = action.payload.message;
     });
-    builder.addCase(updatePassword.rejected, (state, action) =>
-      rejectedHandler(state, action, "Failed to update password")
-    );
 
-    // Logout
+    builder.addCase(refreshAccessToken.fulfilled, (state, action) => {
+      state.accessToken = saveAccessToken(action.payload.accessToken);
+    });
+
+    builder.addCase(refreshAccessToken.rejected, (state) => {
+      state.accessToken = null;
+      state.user = null;
+    });
+
     builder.addCase(logoutUser.fulfilled, (state) => {
       state.user = null;
       state.accessToken = null;
@@ -321,6 +343,48 @@ const authSlice = createSlice({
       state.error = null;
       state.success = null;
     });
+
+    // --------------------------
+    // Admin Users Cases
+    // --------------------------
+    builder.addCase(fetchAllUsers.pending, pendingHandler);
+    builder.addCase(fetchAllUsers.fulfilled, (state, action: PayloadAction<User[]>) => {
+      state.loading = false;
+      state.users = action.payload;
+    });
+    builder.addCase(fetchAllUsers.rejected, (state, action) =>
+      rejectedHandler(state, action, "Failed to fetch users")
+    );
+
+    builder.addCase(updateUserById.pending, pendingHandler);
+    builder.addCase(updateUserById.fulfilled, (state, action: PayloadAction<User>) => {
+      state.loading = false;
+      state.users = state.users.map((u) => (u._id === action.payload._id ? action.payload : u));
+      state.success = "User updated successfully";
+    });
+    builder.addCase(updateUserById.rejected, (state, action) =>
+      rejectedHandler(state, action, "Failed to update user")
+    );
+
+    builder.addCase(deleteUserById.pending, pendingHandler);
+    builder.addCase(deleteUserById.fulfilled, (state, action: PayloadAction<string>) => {
+      state.loading = false;
+      state.users = state.users.filter((u) => u._id !== action.payload);
+      state.success = "User deleted successfully";
+    });
+    builder.addCase(deleteUserById.rejected, (state, action) =>
+      rejectedHandler(state, action, "Failed to delete user")
+    );
+
+    builder.addCase(registerNewAdmin.pending, pendingHandler);
+    builder.addCase(registerNewAdmin.fulfilled, (state, action: PayloadAction<User>) => {
+      state.loading = false;
+      state.users.push(action.payload);
+      state.success = "New admin registered successfully";
+    });
+    builder.addCase(registerNewAdmin.rejected, (state, action) =>
+      rejectedHandler(state, action, "Failed to register admin")
+    );
   },
 });
 

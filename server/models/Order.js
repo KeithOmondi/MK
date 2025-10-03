@@ -42,7 +42,7 @@ const orderSchema = new mongoose.Schema(
     totalEscrowHeld: { type: Number, default: 0 },
 
     // 🚚 Shipping info
-    shippingDetails: {
+    deliveryDetails: {
       address: { type: String, required: true },
       city: { type: String, required: true },
       phone: { type: String, required: true },

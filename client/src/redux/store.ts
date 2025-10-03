@@ -10,6 +10,7 @@ import analyticsReducer from "./slices/analyticsSlice";
 import cartReducer from "./slices/cartSlice";
 import recentlyViewedReducer from "./slices/recentlyViewedSlice"
 import reviewReducer from "./slices/reviewSlice"
+import adminDashboardReducer from "./slices/adminDashboardSlice"
 
 export const store = configureStore({
   reducer: {
@@ -24,6 +25,7 @@ export const store = configureStore({
      cart: cartReducer,
      recentlyViewed: recentlyViewedReducer,
      reviews: reviewReducer,
+     adminDashboard: adminDashboardReducer,
   },
 });
 

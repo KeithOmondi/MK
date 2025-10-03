@@ -23,6 +23,7 @@ import { Country, State, City } from "country-state-city";
 import { MdPayment, MdAttachMoney } from "react-icons/md";
 import Header from "../common/Header";
 import Footer from "../common/Footer";
+import type { OrderPayload } from "../../types/orders";
 
 /* ------------------------ Types ------------------------ */
 type PaymentMethod = "cod" | "mpesa";
@@ -419,7 +420,7 @@ export default function Checkout() {
     dispatch(setShippingCost(cost));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
 
   if (!cart.items?.length) {
@@ -427,35 +428,56 @@ export default function Checkout() {
     return;
   }
 
-  // Sanitize phone number for M-Pesa
-  let sanitizedPhone = deliveryDetails.phone;
+  // ✅ Sanitize phone number for M-Pesa
+  let sanitizedPhone = deliveryDetails.phone?.trim() || "";
   if (paymentMethod === "mpesa") {
     if (!sanitizedPhone) {
       toast.error("Please enter a phone number for M-Pesa.");
       return;
     }
-    sanitizedPhone = sanitizedPhone.replace(/^0/, "254").replace(/\D/g, "");
-    if (!/^2547\d{8}$/.test(sanitizedPhone)) {
-      toast.error("Invalid phone number. Use 07XXXXXXXX or 2547XXXXXXXX.");
+
+    // remove non-digits
+    sanitizedPhone = sanitizedPhone.replace(/\D/g, "");
+
+    if (sanitizedPhone.startsWith("0")) {
+      // handles 07xxxxxxxx and 01xxxxxxxx
+      sanitizedPhone = "254" + sanitizedPhone.slice(1);
+    } else if (sanitizedPhone.startsWith("7") || sanitizedPhone.startsWith("1")) {
+      // handles 7xxxxxxxx and 1xxxxxxxx
+      sanitizedPhone = "254" + sanitizedPhone;
+    }
+
+    // final validation → must be 2547XXXXXXXX or 2541XXXXXXXX
+    if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
+      toast.error("Invalid phone number. Use format 07XXXXXXXX, 01XXXXXXXX, or 2547/2541XXXXXXXX.");
       return;
     }
   }
 
-  // Build type-safe payload
-  const orderPayload = {
-    cartItems: cart.items
+  const orderPayload: OrderPayload = {
+    items: cart.items
       .filter((i) => i.supplier)
       .map((i) => ({ productId: i._id, quantity: i.quantity })),
-    deliveryDetails: { ...deliveryDetails, phone: sanitizedPhone },
+    deliveryDetails: {
+      country: deliveryDetails.country,
+      state: deliveryDetails.state,
+      city: deliveryDetails.city,
+      address: deliveryDetails.address,
+      phone: sanitizedPhone,
+    },
     shippingCost: Number(cart.shippingCost),
-    coupon: cart.coupon || null,
-    paymentMethod,
+    coupon: cart.coupon?.code || null,
+    paymentMethod: paymentMethod as "cod" | "mpesa",
   };
 
   try {
-    const orderResult = await dispatch(submitCartOrder(orderPayload)).unwrap();
-
     if (paymentMethod === "mpesa") {
+      setShowLoader(true);
+
+      // 1️⃣ Create order first
+      const orderResult = await dispatch(submitCartOrder(orderPayload)).unwrap();
+
+      // 2️⃣ Trigger STK push
       await dispatch(
         initiateMpesaPayment({
           orderId: orderResult._id,
@@ -463,10 +485,50 @@ export default function Checkout() {
         })
       ).unwrap();
 
-      setShowLoader(true);
-      setLastOrderId(orderResult._id);
       toast.info("Enter your PIN on your phone to complete payment.");
+      setLastOrderId(orderResult._id);
+
+      // 3️⃣ Poll for payment completion
+      let attempts = 0;
+      const pollPaymentStatus = async () => {
+        if (attempts++ >= 10) {
+          setShowLoader(false);
+          toast.error("Payment not confirmed. Please check your M-Pesa app.");
+          return;
+        }
+
+        try {
+          const statusResult = await dispatch(
+            fetchPaymentStatus({ orderId: orderResult._id })
+          ).unwrap();
+
+          if (statusResult.paymentStatus === "paid") {
+            setShowLoader(false);
+            toast.success("Payment successful! Order has been created.");
+            navigate("/thank-you", {
+              state: {
+                orderId: orderResult._id,
+                totalAmount: statusResult.totalAmount ?? orderResult.totalAmount,
+              },
+            });
+            return; // ✅ stop polling
+          } else if (statusResult.paymentStatus === "failed") {
+            setShowLoader(false);
+            toast.error("Payment failed. Please try again.");
+            return; // ✅ stop polling
+          } else {
+            setTimeout(pollPaymentStatus, 3000);
+          }
+        } catch (err) {
+          console.error("Payment polling error:", err);
+          setTimeout(pollPaymentStatus, 3000);
+        }
+      };
+
+      pollPaymentStatus();
     } else {
+      // COD → directly create order
+      const orderResult = await dispatch(submitCartOrder(orderPayload)).unwrap();
       toast.success("Order placed successfully!");
       navigate("/thank-you", {
         state: { orderId: orderResult._id, totalAmount: orderResult.totalAmount },
@@ -474,9 +536,13 @@ export default function Checkout() {
     }
   } catch (err: any) {
     console.error("Checkout error:", err);
-    toast.error(err?.message || "Failed to place order");
+    setShowLoader(false);
+    toast.error(err?.message || err?.error || "Failed to process your order");
   }
 };
+
+
+
 
 
 

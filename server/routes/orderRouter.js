@@ -34,7 +34,7 @@ router.get("/get/:id", isAuthenticated, getOrderById);
 
 //Get all ordeers for supplier
 router.get(
-  "/admin-get",
+  "/supplier",
   isAuthenticated,
   isAuthorized("Supplier"),
   getAllOrdersForSupplier
@@ -42,7 +42,7 @@ router.get(
 
 //Get all ordeers for Admin
 router.get(
-  "/get",
+  "/admin",
   isAuthenticated,
   isAuthorized("Admin"),
   getAllOrdersForAdmin
@@ -70,7 +70,6 @@ router.delete(
 router.post(
   "/add/:id/review",
   isAuthenticated,
-  isAuthorized("Buyer"),
   addReview
 );
 
@@ -80,7 +79,6 @@ router.post(
 router.post(
   "/request/:id/refund",
   isAuthenticated,
-  isAuthorized("Buyer"),
   requestRefund
 );
 
@@ -103,7 +101,7 @@ router.put(
 /* -------------------- CANCEL ORDER -------------------- */
 
 // ✅ Cancel order → Buyer
-router.put("/cancel/:id", isAuthenticated, isAuthorized("Buyer"), cancelOrder);
+router.put("/cancel/:id", isAuthenticated, cancelOrder);
 
 //getting delivered products
 

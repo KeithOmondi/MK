@@ -4,8 +4,9 @@ import {
   createAsyncThunk,
   type PayloadAction,
 } from "@reduxjs/toolkit";
-import api from "../../api/axios"; // Assuming you have an API helper
+import api from "../../api/axios";
 import type { RootState } from "../store";
+import type { OrderPayload } from "../../types/orders";
 
 // ==========================
 // Types
@@ -67,36 +68,23 @@ const calculateTotals = (
 };
 
 // ==========================
-// Updated Async Thunk
+// Async Thunk: Submit Order
 // ==========================
-// src/redux/slices/cartSlice.ts
 export const submitCartOrder = createAsyncThunk(
   "cart/submitOrder",
-  async (
-    payload: {
-      cartItems: { productId: string; quantity: number }[];
-      deliveryDetails: {
-        country: string;
-        state: string;
-        city: string;
-        address: string;
-        phone: string;
-      };
-      shippingCost: number;
-      coupon?: Coupon | null;
-      paymentMethod: "cod" | "mpesa";
-    },
-    { rejectWithValue }
-  ) => {
+  async (payload: OrderPayload, { rejectWithValue }) => {
     try {
-      const { data } = await api.post("/orders/create", payload);
+      // ✅ normalize coupon to string|null
+      const { data } = await api.post("/orders/create", {
+        ...payload,
+        coupon: payload.coupon ?? null,
+      });
       return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
-
 
 // ==========================
 // Slice
@@ -105,16 +93,9 @@ const cartSlice = createSlice({
   name: "cart",
   initialState,
   reducers: {
-    // ==========================
-    // Updated addToCart & submit order handling
-    // ==========================
     addToCart: (state, action: PayloadAction<CartItem>) => {
-      // Ignore items without a supplier
       if (!action.payload.supplier) return;
-
-      const existing = state.items.find(
-        (item) => item._id === action.payload._id
-      );
+      const existing = state.items.find((item) => item._id === action.payload._id);
       if (existing) {
         existing.quantity += action.payload.quantity;
       } else {
@@ -123,45 +104,28 @@ const cartSlice = createSlice({
           quantity: action.payload.quantity || 1,
         });
       }
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
     removeFromCart: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter((item) => item._id !== action.payload);
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
-    updateQuantity: (
-      state,
-      action: PayloadAction<{ id: string; quantity: number }>
-    ) => {
+    updateQuantity: (state, action: PayloadAction<{ id: string; quantity: number }>) => {
       const item = state.items.find((i) => i._id === action.payload.id);
-      if (item && action.payload.quantity > 0 && item.supplier)
+      if (item && action.payload.quantity > 0 && item.supplier) {
         item.quantity = action.payload.quantity;
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      }
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
     incrementQuantity: (state, action: PayloadAction<string>) => {
       const item = state.items.find((i) => i._id === action.payload);
       if (item) item.quantity += 1;
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
     decrementQuantity: (state, action: PayloadAction<string>) => {
       const item = state.items.find((i) => i._id === action.payload);
       if (item && item.quantity > 1) item.quantity -= 1;
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
     clearCart: (state) => {
       state.items = [];
@@ -172,24 +136,15 @@ const cartSlice = createSlice({
     },
     applyCoupon: (state, action: PayloadAction<Coupon>) => {
       state.coupon = action.payload;
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
     removeCoupon: (state) => {
       state.coupon = null;
-      Object.assign(
-        state,
-        calculateTotals(state.items, null, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, null, state.shippingCost));
     },
     setShippingCost: (state, action: PayloadAction<number>) => {
       state.shippingCost = action.payload;
-      Object.assign(
-        state,
-        calculateTotals(state.items, state.coupon, state.shippingCost)
-      );
+      Object.assign(state, calculateTotals(state.items, state.coupon, state.shippingCost));
     },
   },
   extraReducers: (builder) => {

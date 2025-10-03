@@ -39,11 +39,16 @@ export interface Refund {
   processedAt?: string;
 }
 
+export interface Supplier {
+  _id: string;
+  shopName: string;
+}
+
 export interface Order {
   _id: string;
   buyer: { _id?: string; name?: string; email?: string } | string;
   items: OrderItem[];
-  supplier: string;
+  supplier: string | Supplier; // can be just an id OR a populated supplier
   totalAmount: number;
   shippingCost: number;
   coupon?: Coupon | null;
@@ -55,6 +60,7 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
 }
+
 
 export interface OrderState {
   orders: Order[];
@@ -182,17 +188,19 @@ export const fetchDeliveredOrders = createAsyncThunk<Order[]>(
   }
 );
 
-export const fetchSupplierOrders = createAsyncThunk<Order[], string>(
+export const fetchSupplierOrders = createAsyncThunk<Order[], string | undefined>(
   "orders/fetchSupplierOrders",
   async (supplierId, { rejectWithValue }) => {
     try {
-      const { data } = await api.get(`/orders/supplier/${supplierId}`);
+      const url = supplierId ? `/orders/supplier/${supplierId}` : `/orders/supplier`;
+      const { data } = await api.get(url);
       return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
+
 
 // Add this thunk after the others in your existing orderSlice.ts
 
@@ -208,6 +216,25 @@ export const fetchAdminOrders = createAsyncThunk<Order[]>(
     }
   }
 );
+
+export const fetchOrderPaymentStatus = createAsyncThunk<
+  { orderId: string; paymentStatus: "pending" | "paid" | "refunded" | "failed" },
+  string
+>(
+  "orders/fetchPaymentStatus",
+  async (orderId, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get(`/payments/status/${orderId}`);
+      // Validate the value to match the union type
+      const status = data.paymentStatus as "pending" | "paid" | "refunded" | "failed";
+      return { orderId, paymentStatus: status };
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+
 
 
 // Update order status (admin)
@@ -286,6 +313,26 @@ const orderSlice = createSlice({
     state.loading = false;
     state.error = action.payload || "Something went wrong";
   })
+
+  // Payment Status
+.addCase(fetchOrderPaymentStatus.pending, (state) => {
+  state.loading = true;
+  state.error = null;
+})
+.addCase(fetchOrderPaymentStatus.fulfilled, (state, action) => {
+  state.loading = false;
+  const { orderId, paymentStatus } = action.payload;
+  const idx = state.orders.findIndex((o) => o._id === orderId);
+  if (idx !== -1) state.orders[idx].paymentStatus = paymentStatus;
+  if (state.order?._id === orderId) {
+    state.order.paymentStatus = paymentStatus;
+  }
+})
+.addCase(fetchOrderPaymentStatus.rejected, (state, action: any) => {
+  state.loading = false;
+  state.error = action.payload || "Failed to fetch payment status";
+})
+
 
       // Fetch All Orders
       .addCase(fetchOrders.pending, pending)
