@@ -33,12 +33,7 @@ const userSchema = new mongoose.Schema(
 
     accountVerified: { type: Boolean, default: false },
 
-    // Force password change
-    forcePasswordChange: { type: Boolean, default: false },
-    forcePasswordToken: { type: String, select: false },
-    forcePasswordTokenExpiry: { type: Date },
-
-    // OTP verification (store hashed)
+    // OTP verification
     verificationCode: { type: String, select: false },
     verificationCodeExpiry: { type: Date },
     otpAttempts: { type: Number, default: 0 },
@@ -64,8 +59,8 @@ const userSchema = new mongoose.Schema(
     // 🔒 Hashed refresh token storage
     refreshToken: { type: String, select: false },
 
-    // 📌 New Security Fields
-    lastLogin: { type: Date }, // quick access
+    // 📌 Security + Analytics
+    lastLogin: { type: Date },
     loginHistory: [
       {
         ip: String,
@@ -82,8 +77,6 @@ const userSchema = new mongoose.Schema(
         delete obj.password;
         delete obj.resetPasswordToken;
         delete obj.resetPasswordExpire;
-        delete obj.forcePasswordToken;
-        delete obj.forcePasswordTokenExpiry;
         delete obj.verificationCode;
         delete obj.verificationCodeExpiry;
         delete obj.refreshToken;
@@ -105,13 +98,6 @@ userSchema.pre("save", async function (next) {
 userSchema.methods.comparePassword = async function (candidatePassword) {
   if (!this.password) return false;
   return bcrypt.compare(candidatePassword, this.password);
-};
-
-userSchema.methods.generateForcePasswordToken = function () {
-  const token = crypto.randomBytes(20).toString("hex");
-  this.forcePasswordToken = crypto.createHash("sha256").update(token).digest("hex");
-  this.forcePasswordTokenExpiry = Date.now() + 15 * 60 * 1000;
-  return token;
 };
 
 // OTP methods

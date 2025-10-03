@@ -7,7 +7,7 @@ import { sendEmail } from "../utils/sendMail.js";
 import { User } from "../models/userModel.js";
 
 // -------------------------
-// Register Supplier
+// Register Supplier (Final Step)
 // -------------------------
 export const registerSupplier = asyncHandler(async (req, res) => {
   const {
@@ -29,18 +29,37 @@ export const registerSupplier = asyncHandler(async (req, res) => {
     branch,
   } = req.body;
 
-  // Prevent duplicate User accounts
-  if (await User.findOne({ email })) {
-    return res.status(400).json({ message: "Email already in use" });
+  // ✅ Ensure user exists
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(400).json({ message: "Please create and verify your account first." });
   }
 
-  // Prevent duplicate Shop names
+  // ✅ Ensure email is verified
+  if (!user.accountVerified) {
+    return res.status(400).json({ message: "Email not verified. Complete OTP verification first." });
+  }
+
+  // ✅ Prevent duplicate shop name
   if (await Supplier.findOne({ shopName })) {
     return res.status(400).json({ message: "Shop name already taken" });
   }
 
-  // Upload documents
-  let idDocument = {}, businessLicense = {}, passportPhoto = {};
+  // ✅ Prevent duplicate Supplier profile for same user
+  let existingSupplier = await Supplier.findOne({ user: user._id });
+  if (existingSupplier) {
+    return res.status(200).json({
+      success: true,
+      message: "You already have a supplier profile. Awaiting admin approval if not approved yet.",
+      data: { supplierId: existingSupplier._id, email },
+    });
+  }
+
+  // Upload docs
+  let idDocument = {},
+      businessLicense = {},
+      passportPhoto = {};
+
   if (req.files?.idDocument?.[0]) {
     const upload = await uploadToCloudinary(req.files.idDocument[0].buffer);
     idDocument = { url: upload.url, publicId: upload.public_id };
@@ -54,20 +73,13 @@ export const registerSupplier = asyncHandler(async (req, res) => {
     passportPhoto = { url: upload.url, publicId: upload.public_id };
   }
 
-  // Create the User account with temporary password (not emailed yet)
-  const tempPassword = crypto.randomBytes(8).toString("hex");
-  const hashedPassword = await bcrypt.hash(tempPassword, 10);
+  // ✅ Upgrade user role to Supplier if not already
+  if (user.role !== "Supplier") {
+    user.role = "Supplier";
+    await user.save();
+  }
 
-  const user = await User.create({
-    name: fullName,
-    email,
-    password: hashedPassword,
-    role: "Supplier",
-    phoneNumber,
-    forcePasswordChange: true,
-  });
-
-  // Create the Supplier profile
+  // ✅ Create Supplier profile linked to existing verified user
   const supplier = await Supplier.create({
     user: user._id,
     username,
@@ -89,102 +101,140 @@ export const registerSupplier = asyncHandler(async (req, res) => {
     accountNumber,
     accountName,
     branch,
-    status: "Pending",
-    verified: false,
+    status: "Pending", // needs admin approval
+    verified: true,    // email already verified
   });
 
   res.status(201).json({
     success: true,
-    message: "Supplier profile created. Awaiting admin approval.",
-    data: supplier,
+    message: "Supplier application submitted successfully. Awaiting admin approval.",
+    data: { supplierId: supplier._id, email },
   });
 });
 
-// -------------------------
-// Update Supplier (Admin Approval)
-// -------------------------
-export const updateSupplier = asyncHandler(async (req, res) => {
-  const {
-    username,
-    email,
-    sellerType,
-    referralCode,
-    shopName,
-    businessType,
-    website,
-    fullName,
-    phoneNumber,
-    address,
-    bankName,
-    accountNumber,
-    accountName,
-    branch,
-    status,
-  } = req.body;
 
-  const supplier = await Supplier.findById(req.params.id).populate("user");
+
+// -------------------------
+// Verify Supplier Email (OTP)
+// -------------------------
+export const verifySupplierOtp = asyncHandler(async (req, res) => {
+  const { supplierId, otp } = req.body;
+
+  const supplier = await Supplier.findById(supplierId).populate("user");
   if (!supplier) {
     res.status(404);
     throw new Error("Supplier not found");
   }
 
-  // Authorization
-  if (supplier.user._id.toString() !== req.user._id.toString() && req.user.role !== "Admin") {
+  if (!supplier.emailVerificationCode || supplier.emailVerificationExpiry < Date.now()) {
+    res.status(400);
+    throw new Error("OTP expired. Please request a new one.");
+  }
+
+  const isMatch = await bcrypt.compare(otp, supplier.emailVerificationCode);
+  if (!isMatch) {
+    res.status(400);
+    throw new Error("Invalid OTP");
+  }
+
+  supplier.verified = true;
+  supplier.emailVerificationCode = undefined;
+  supplier.emailVerificationExpiry = undefined;
+  await supplier.save();
+
+  res.json({ success: true, message: "Supplier email verified. Awaiting admin approval." });
+});
+
+// -------------------------
+// Resend OTP for Supplier Verification
+// -------------------------
+export const resendOtp = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  // If already verified, don’t resend
+  if (user.accountVerified) {
+    return res.status(400).json({ message: "Account already verified" });
+  }
+
+  // Limit OTP resends (security measure)
+  if (user.resendAttempts >= 3 && user.lastOtpSentAt && Date.now() - user.lastOtpSentAt < 60 * 60 * 1000) {
+    return res
+      .status(429)
+      .json({ message: "Too many OTP requests. Please try again after 1 hour." });
+  }
+
+  // Generate new OTP
+  const otp = user.generateOtp();
+  user.resendAttempts += 1;
+  user.lastOtpSentAt = Date.now();
+  await user.save();
+
+  // Send email with OTP
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: "🔑 Resend OTP - Account Verification",
+      message: `Hello ${user.name},\n\nHere is your new OTP code: ${otp}\n\nThis code will expire in 10 minutes.\n\nIf you didn’t request this, please ignore this email.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "New OTP has been sent to your email",
+    });
+  } catch (err) {
+    console.error("❌ Email sending failed:", err);
+    res.status(500).json({ message: "Failed to send OTP email" });
+  }
+});
+
+
+
+// -------------------------
+// Update Supplier (Admin Approval)
+// -------------------------
+export const updateSupplier = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  const supplier = await Supplier.findById(req.params.id).populate("user");
+
+  if (!supplier) {
+    res.status(404);
+    throw new Error("Supplier not found");
+  }
+
+  if (req.user.role !== "Admin") {
     res.status(403);
     throw new Error("Not authorized");
   }
 
-  // Update basic fields
-  supplier.username = username || supplier.username;
-  supplier.email = email || supplier.email;
-  supplier.sellerType = sellerType || supplier.sellerType;
-  supplier.referralCode = referralCode || supplier.referralCode;
-  supplier.fullName = fullName || supplier.fullName;
-  supplier.phoneNumber = phoneNumber || supplier.phoneNumber;
-  supplier.address = address || supplier.address;
-  supplier.shopName = shopName || supplier.shopName;
-  supplier.businessType = businessType || supplier.businessType;
-  supplier.website = website || supplier.website;
-  supplier.bankName = bankName || supplier.bankName;
-  supplier.accountNumber = accountNumber || supplier.accountNumber;
-  supplier.accountName = accountName || supplier.accountName;
-  supplier.branch = branch || supplier.branch;
-
-  // Admin approval workflow
-  if (req.user.role === "Admin" && status) {
-    const statusChanged = supplier.status !== status;
+  if (status && supplier.status !== status) {
     supplier.status = status;
-    supplier.verified = status === "Approved";
 
-    if (status === "Approved" && statusChanged) {
-      // Generate a new temporary password
-      const tempPassword = crypto.randomBytes(8).toString("hex");
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
-      supplier.user.password = hashedPassword;
-      supplier.user.forcePasswordChange = true;
-      await supplier.user.save();
-
-      // Send approval email with login details
+    if (status === "Approved") {
       try {
         await sendEmail({
           email: supplier.user.email,
           subject: "✅ Supplier Account Approved",
-          message: `Hello ${supplier.fullName},\n\nYour supplier account has been approved.\n\nLogin details:\n- Email: ${supplier.user.email}\n- Temporary Password: ${tempPassword}\n\nPlease log in and change your password immediately.`,
+          message: `Hello ${supplier.fullName},\n\nYour supplier account has been approved.\nYou can now log in to your dashboard and start listing products.`,
         });
       } catch (err) {
-        console.error("❌ Email sending failed:", err);
+        console.error("❌ Approval email failed:", err);
       }
     }
   }
 
   const updatedSupplier = await supplier.save();
-  res.json({
-    success: true,
-    message: "Supplier updated successfully",
-    data: updatedSupplier,
-  });
+  res.json({ success: true, message: "Supplier updated", data: updatedSupplier });
 });
+
 
 // -------------------------
 // Delete Supplier (Admin)

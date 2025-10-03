@@ -26,8 +26,9 @@ const LoginPage: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
 
-  const { loading, user, accessToken, error, success, forcePasswordChange } =
-    useSelector((state: RootState) => state.auth);
+  const { loading, user, accessToken, error, success } = useSelector(
+    (state: RootState) => state.auth
+  );
 
   // Restore remembered email
   useEffect(() => {
@@ -40,18 +41,7 @@ const LoginPage: React.FC = () => {
 
   // Handle login success + redirects
   useEffect(() => {
-    if (!user) return;
-
-    // 🔑 Force password change flow
-    if (forcePasswordChange) {
-      navigate("/force-change-password", {
-        replace: true,
-        state: { user },
-      });
-      return;
-    }
-
-    if (!accessToken) return;
+    if (!user || !accessToken) return;
 
     toast.success(success || "Login successful ✅");
 
@@ -66,7 +56,7 @@ const LoginPage: React.FC = () => {
 
     // Reset transient state after redirect
     setTimeout(() => dispatch(clearAuthState()), 500);
-  }, [user, accessToken, forcePasswordChange, success, navigate, dispatch]);
+  }, [user, accessToken, success, navigate, dispatch]);
 
   // Handle errors
   useEffect(() => {

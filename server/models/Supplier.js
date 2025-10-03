@@ -1,19 +1,19 @@
+// models/supplierModel.ts
 import mongoose from "mongoose";
 
 const supplierSchema = new mongoose.Schema(
   {
+    // Linked user account
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      unique: true, // one supplier per user
+      unique: true, // 1 user = 1 supplier profile
     },
 
     // -----------------------------
-    // Account / Personal Info
+    // Personal / Contact
     // -----------------------------
-    username: { type: String, trim: true, required: true },
-    email: { type: String, trim: true, required: true },
     phoneNumber: { type: String, required: true, trim: true },
     sellerType: {
       type: String,
@@ -22,12 +22,11 @@ const supplierSchema = new mongoose.Schema(
     },
     referralCode: { type: String, trim: true },
 
-    fullName: { type: String, trim: true, required: true },
-    address: { type: String, required: true },
-
     // -----------------------------
     // Legal / Documents
     // -----------------------------
+    fullName: { type: String, trim: true, required: true },
+    address: { type: String, required: true },
     idNumber: { type: String, required: true },
     idDocument: { url: String, publicId: String },
     taxNumber: { type: String },
@@ -61,7 +60,9 @@ const supplierSchema = new mongoose.Schema(
       enum: ["Pending", "Approved", "Rejected"],
       default: "Pending",
     },
-    verified: { type: Boolean, default: false },
+    verified: { type: Boolean, default: false }, // email verification
+    emailVerificationCode: { type: String },
+    emailVerificationExpiry: { type: Date },
     rating: { type: Number, default: 0 },
 
     // Linked products

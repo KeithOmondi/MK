@@ -9,7 +9,6 @@ export interface User {
   name: string;
   email: string;
   role: "Admin" | "Supplier" | "User";
-  forcePasswordChange?: boolean;
 }
 
 interface AuthState {
@@ -18,7 +17,6 @@ interface AuthState {
   loading: boolean;
   error: string | null;
   success: string | null;
-  forcePasswordChange: boolean;
 }
 
 type RejectValue = string;
@@ -46,7 +44,6 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   success: null,
-  forcePasswordChange: false,
 };
 
 // ==========================
@@ -78,12 +75,24 @@ export const verifyOTP = createAsyncThunk<
   }
 });
 
+export const resendOTP = createAsyncThunk<
+  { message: string },
+  { email: string },
+  { rejectValue: RejectValue }
+>("auth/resendOTP", async (payload, thunkAPI) => {
+  try {
+    const { data } = await api.post("/auth/otp/resend", payload);
+    return data;
+  } catch (err: any) {
+    return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to resend OTP");
+  }
+});
+
 export const login = createAsyncThunk<
   {
     message: string;
     accessToken?: string;
     user?: User;
-    requiresPasswordChange?: boolean;
     accountLocked?: boolean;
     attemptsLeft?: number;
   },
@@ -164,20 +173,6 @@ export const updatePassword = createAsyncThunk<
   }
 });
 
-export const resendOTP = createAsyncThunk<
-  { message: string },
-  { email: string },
-  { rejectValue: RejectValue }
->("auth/resendOTP", async (payload, thunkAPI) => {
-  try {
-    const { data } = await api.post("/auth/otp/resend", payload);
-    return data;
-  } catch (err: any) {
-    return thunkAPI.rejectWithValue(err.response?.data?.message || "Failed to resend OTP");
-  }
-});
-
-
 // ✅ updated to POST
 export const logoutUser = createAsyncThunk("auth/logoutUser", async () => {
   try {
@@ -202,7 +197,6 @@ const authSlice = createSlice({
     logout: (state) => {
       state.user = null;
       state.accessToken = null;
-      state.forcePasswordChange = false;
       state.loading = false;
       state.error = null;
       state.success = null;
@@ -244,40 +238,15 @@ const authSlice = createSlice({
       rejectedHandler(state, action, "OTP verification failed")
     );
 
-// Resend OTP
-builder.addCase(resendOTP.pending, (state) => {
-  state.loading = true;
-  state.error = null;
-  state.success = null;
-});
-
-builder.addCase(resendOTP.fulfilled, (state, action) => {
-  state.loading = false;
-  // Always expect backend to return { message: string }
-  state.success = action.payload.message;
-});
-
-builder.addCase(resendOTP.rejected, (state, action) => {
-  state.loading = false;
-
-  let message = "Failed to resend OTP";
-
-  if (typeof action.payload === "string") {
-    message = action.payload;
-  } else if (
-    action.payload &&
-    typeof action.payload === "object" &&
-    "message" in action.payload
-  ) {
-    message = (action.payload as { message: string }).message;
-  } else if (action.error?.message) {
-    message = action.error.message;
-  }
-
-  state.error = message;
-});
-
-
+    // Resend OTP
+    builder.addCase(resendOTP.pending, pendingHandler);
+    builder.addCase(resendOTP.fulfilled, (state, action) => {
+      state.loading = false;
+      state.success = action.payload.message;
+    });
+    builder.addCase(resendOTP.rejected, (state, action) =>
+      rejectedHandler(state, action, "Failed to resend OTP")
+    );
 
     // Login
     builder.addCase(login.pending, pendingHandler);
@@ -286,8 +255,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
       state.success = action.payload.message;
       if (action.payload.accessToken) state.accessToken = saveAccessToken(action.payload.accessToken);
       state.user = action.payload.user || null;
-      state.forcePasswordChange =
-        action.payload.requiresPasswordChange || action.payload.user?.forcePasswordChange || false;
     });
     builder.addCase(login.rejected, (state, action) =>
       rejectedHandler(state, action, "Login failed")
@@ -300,7 +267,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
     builder.addCase(refreshAccessToken.rejected, (state) => {
       state.accessToken = null;
       state.user = null;
-      state.forcePasswordChange = false;
     });
 
     // Get User
@@ -313,7 +279,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
       rejectedHandler(state, action, "Failed to fetch user");
       state.user = null;
       state.accessToken = null;
-      state.forcePasswordChange = false;
     });
 
     // Forgot Password
@@ -333,7 +298,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
       state.success = action.payload.message;
       if (action.payload.accessToken) state.accessToken = saveAccessToken(action.payload.accessToken);
       if (action.payload.user) state.user = action.payload.user;
-      state.forcePasswordChange = action.payload.user?.forcePasswordChange || false;
     });
     builder.addCase(resetPassword.rejected, (state, action) =>
       rejectedHandler(state, action, "Password reset failed")
@@ -344,8 +308,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
     builder.addCase(updatePassword.fulfilled, (state, action) => {
       state.loading = false;
       state.success = action.payload.message;
-      state.forcePasswordChange = false;
-      if (state.user) state.user.forcePasswordChange = false;
     });
     builder.addCase(updatePassword.rejected, (state, action) =>
       rejectedHandler(state, action, "Failed to update password")
@@ -355,7 +317,6 @@ builder.addCase(resendOTP.rejected, (state, action) => {
     builder.addCase(logoutUser.fulfilled, (state) => {
       state.user = null;
       state.accessToken = null;
-      state.forcePasswordChange = false;
       state.loading = false;
       state.error = null;
       state.success = null;

@@ -5,12 +5,11 @@ import { User } from "../models/userModel.js";
 import validator from "validator";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-//import { sendVerificationCode } from "../utils/sendVerificationCode.js";
 import { sendToken } from "../utils/sendToken.js";
 import { sendEmail } from "../utils/sendMail.js";
 import { generateOTP } from "../utils/generateOTP.js";
 import { generateLoginAlertEmailTemplate, generatePasswordChangeEmailTemplate } from "../utils/emailTemplates.js";
-import bcrypt from "bcryptjs";
+import Supplier from "../models/Supplier.js";
 
 /* -------------------------
    Helpers
@@ -30,7 +29,6 @@ const validatePassword = (password) => {
     );
   }
 };
-
 
 /* =========================================================
    ✅ Register
@@ -70,18 +68,17 @@ export const register = catchAsyncErrors(async (req, res, next) => {
   // ✅ Generate OTP
   const otp = generateOTP();
 
-  // ✅ No manual bcrypt.hash here — model pre-save hook will hash automatically
   const user = await User.create({
     name,
     email,
-    password, // will be hashed by pre-save
+    password, // pre-save hook will hash
     avatar: avatarData,
     accountVerified: false,
     verificationCode: otp,
-    verificationCodeExpiry: Date.now() + 15 * 60 * 1000, // 15 min expiry
+    verificationCodeExpiry: Date.now() + 15 * 60 * 1000,
   });
 
-  // ✅ Send OTP via email
+  // ✅ Send OTP
   await sendEmail({
     email,
     subject: "Verify your account - MKSTORE",
@@ -95,7 +92,6 @@ export const register = catchAsyncErrors(async (req, res, next) => {
     user: { id: user._id, email: user.email },
   });
 });
-
 
 /* =========================================================
    ✅ Verify OTP
@@ -122,7 +118,6 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
   return sendToken(user, 200, "Account verified successfully", res);
 });
 
-
 /* =========================================================
    ✅ Resend OTP
 ========================================================= */
@@ -143,7 +138,7 @@ export const resendOTP = catchAsyncErrors(async (req, res, next) => {
 
   await sendEmail({
     to: email,
-    subject: "Resend OTP - Library System",
+    subject: "Resend OTP - MKSTORE",
     html: `<p>Hello ${user.name},</p>
            <p>Your new OTP is <b>${otp}</b>. It will expire in 15 minutes.</p>`,
   });
@@ -154,20 +149,50 @@ export const resendOTP = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-/* -------------------------
-   Login
-------------------------- */
+/* =========================================================
+   ✅ Login
+========================================================= */
 const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
   if (!email || !password)
     return next(new ErrorHandler(400, "Email and password are required."));
 
   const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
-    "+password +loginAttempts +lockUntil +forcePasswordChange +forcePasswordToken +forcePasswordTokenExpiry +refreshToken"
+    "+password +loginAttempts +lockUntil +refreshToken"
   );
   if (!user) return next(new ErrorHandler(401, "Invalid email or password."));
 
-  // Check lock status
+  // ==========================
+  // ✅ Supplier extra checks
+  // ==========================
+  if (user.role === "Supplier") {
+    const supplier = await Supplier.findOne({ user: user._id });
+
+    if (!supplier) {
+      return next(new ErrorHandler(403, "Supplier profile not found."));
+    }
+
+    // Block if OTP not verified
+    if (!supplier.verified) {
+      return next(
+        new ErrorHandler(403, "Please verify your email with the OTP sent.")
+      );
+    }
+
+    // Block if admin has not yet approved
+    if (supplier.status !== "Approved") {
+      return next(
+        new ErrorHandler(
+          403,
+          "Your supplier account is awaiting admin approval."
+        )
+      );
+    }
+  }
+
+  // ==========================
+  // Account lock check
+  // ==========================
   if (user.isLocked) {
     const unlockTime = Math.ceil((user.lockUntil - Date.now()) / 60000);
     return res.status(423).json({
@@ -177,7 +202,9 @@ const login = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
-  // Check password
+  // ==========================
+  // Password check
+  // ==========================
   const isValid = await user.comparePassword(password);
   if (!isValid) {
     await user.incrementLoginAttempts();
@@ -189,29 +216,11 @@ const login = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
-  // Reset login attempts if valid
   await user.resetLoginAttempts();
 
-  // ---- FORCE PASSWORD CHANGE FLOW ----
-  if (user.forcePasswordChange) {
-    const token = user.generateForcePasswordToken();
-    await user.save({ validateBeforeSave: false });
-
-    const url = `${process.env.FRONTEND_URL}/force-change-password?token=${token}`;
-    await sendEmail({
-      email: user.email,
-      subject: "Password Change Required",
-      message: `Click here to reset your password: ${url}`,
-    });
-
-    return res.status(200).json({
-      success: true,
-      requiresPasswordChange: true,
-      message: "Please check your email to set a new password.",
-    });
-  }
-
-  // ----------- NEW LOGIN ALERT + HISTORY -----------
+  // ==========================
+  // Login history + alerts
+  // ==========================
   const ip =
     req.headers["x-forwarded-for"]?.split(",")[0] ||
     req.connection.remoteAddress ||
@@ -220,15 +229,13 @@ const login = catchAsyncErrors(async (req, res, next) => {
   const userAgent = req.headers["user-agent"] || "Unknown device";
   const time = new Date().toLocaleString();
 
-  // Save login history (append, keep last 10 for example)
   user.loginHistory = user.loginHistory || [];
   user.loginHistory.push({ ip, userAgent, time });
   if (user.loginHistory.length > 10) {
-    user.loginHistory = user.loginHistory.slice(-10); // keep last 10
+    user.loginHistory = user.loginHistory.slice(-10);
   }
   await user.save({ validateBeforeSave: false });
 
-  // Send login alert email
   const html = generateLoginAlertEmailTemplate(user.name, ip, userAgent, time);
   await sendEmail({
     email: user.email,
@@ -236,34 +243,12 @@ const login = catchAsyncErrors(async (req, res, next) => {
     html,
   });
 
-  // ----------- SEND TOKENS -----------
+  // ==========================
+  // Send tokens
+  // ==========================
   await sendToken(user, 200, "Login successful.", res);
 });
 
-
-/* -------------------------
-   Force Password Change
-------------------------- */
-const forceChangePassword = catchAsyncErrors(async (req, res, next) => {
-  const { token, newPassword, confirmNewPassword } = req.body;
-  if (newPassword !== confirmNewPassword) return next(new ErrorHandler(400, "Passwords do not match."));
-  validatePassword(newPassword);
-
-  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-  const user = await User.findOne({
-    forcePasswordToken: hashedToken,
-    forcePasswordTokenExpiry: { $gt: Date.now() },
-  });
-  if (!user) return next(new ErrorHandler(400, "Invalid or expired token."));
-
-  user.password = newPassword;
-  user.forcePasswordChange = false;
-  user.forcePasswordToken = undefined;
-  user.forcePasswordTokenExpiry = undefined;
-  await user.save();
-
-  sendToken(user, 200, "Password changed successfully.", res);
-});
 
 /* =========================================================
    ✅ Forgot Password
@@ -274,24 +259,20 @@ export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
 
   if (!user) return next(new ErrorHandler("User not found", 404));
 
-  // Generate reset token
   const resetToken = crypto.randomBytes(32).toString("hex");
   user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
-  user.resetPasswordExpire = Date.now() + 15 * 60 * 1000; // 15 minutes
+  user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
 
   await user.save({ validateBeforeSave: false });
 
-  // Construct reset URL
   const resetUrl = `${process.env.FRONTEND_URL}/password/reset/${resetToken}`;
 
-  // Send email
   await sendEmail({
     to: user.email,
-    subject: "Password Reset - Library System",
+    subject: "Password Reset - MKSTORE",
     html: `<p>Hello ${user.name},</p>
-           <p>You requested a password reset. Click the link below to reset:</p>
-           <a href="${resetUrl}">${resetUrl}</a>
-           <p>If you didn’t request this, please ignore.</p>`,
+           <p>Click below to reset your password:</p>
+           <a href="${resetUrl}">${resetUrl}</a>`,
   });
 
   res.status(200).json({
@@ -300,89 +281,69 @@ export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
   });
 });
 
-
 /* =========================================================
    ✅ Reset Password
 ========================================================= */
+export const resetPassword = catchAsyncErrors(async (req, res, next) => {
+  const resetPasswordToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
 
-export const resetPassword = async (req, res, next) => {
-  try {
-    // 1. Get token from URL
-    const resetPasswordToken = crypto
-      .createHash("sha256")
-      .update(req.params.token)
-      .digest("hex");
+  const user = await User.findOne({
+    resetPasswordToken,
+    resetPasswordExpire: { $gt: Date.now() },
+  });
 
-    // 2. Find user by token and check expiry
-    const user = await User.findOne({
-      resetPasswordToken,
-      resetPasswordExpire: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return next(new ErrorHandler("Password reset token is invalid or has expired", 400));
-    }
-
-    // 3. Set new password
-    user.password = req.body.password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-
-    await user.save();
-
-    // ✅ 4. Send password change alert
-    const html = generatePasswordChangeEmailTemplate(user.name);
-    await sendEmail({
-      email: user.email,
-      subject: "Password Change Alert",
-      html,
-    });
-
-    // 5. Respond success
-    res.status(200).json({
-      success: true,
-      message: "Password has been reset successfully. A security alert email has been sent.",
-    });
-  } catch (error) {
-    next(error);
+  if (!user) {
+    return next(new ErrorHandler("Password reset token is invalid or has expired", 400));
   }
-};
 
-/* -------------------------
-   Update Password (logged in)
-------------------------- */
-export const updatePassword = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id).select("+password");
+  user.password = req.body.password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  await user.save();
 
-    const isMatched = await user.comparePassword(req.body.oldPassword);
-    if (!isMatched) {
-      return res.status(400).json({ success: false, message: "Old password is incorrect" });
-    }
+  const html = generatePasswordChangeEmailTemplate(user.name);
+  await sendEmail({
+    email: user.email,
+    subject: "Password Change Alert",
+    html,
+  });
 
-    user.password = req.body.newPassword;
-    await user.save();
+  res.status(200).json({
+    success: true,
+    message: "Password has been reset successfully.",
+  });
+});
 
-    // ✅ Send notification email
-    const html = generatePasswordChangeEmailTemplate(user.name);
-    await sendEmail({
-      email: user.email,
-      subject: "Password Change Alert",
-      html,
-    });
+/* =========================================================
+   ✅ Update Password (logged in)
+========================================================= */
+export const updatePassword = catchAsyncErrors(async (req, res, next) => {
+  const user = await User.findById(req.user.id).select("+password");
 
-    res.status(200).json({
-      success: true,
-      message: "Password updated successfully. A security alert email has been sent.",
-    });
-  } catch (error) {
-    next(error);
+  const isMatched = await user.comparePassword(req.body.oldPassword);
+  if (!isMatched) {
+    return res.status(400).json({ success: false, message: "Old password is incorrect" });
   }
-};
 
-/* -------------------------
-   Logout
-------------------------- */
+  user.password = req.body.newPassword;
+  await user.save();
+
+  const html = generatePasswordChangeEmailTemplate(user.name);
+  await sendEmail({
+    email: user.email,
+    subject: "Password Change Alert",
+    html,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Password updated successfully.",
+  });
+});
+
+/* =========================================================
+   ✅ Logout
+========================================================= */
 const logout = catchAsyncErrors(async (req, res, next) => {
   if (req.user) {
     const user = await User.findById(req.user._id).select("+refreshToken");
@@ -399,39 +360,29 @@ const logout = catchAsyncErrors(async (req, res, next) => {
   }).status(200).json({ success: true, message: "Logged out successfully." });
 });
 
-/* -------------------------
-   Get Current User
-------------------------- */
+/* =========================================================
+   ✅ Get Current User
+========================================================= */
 const getUser = catchAsyncErrors(async (req, res) => {
   res.status(200).json({ success: true, user: req.user });
 });
 
-/* -------------------------
-   Refresh Token
-------------------------- */
+/* =========================================================
+   ✅ Refresh Token
+========================================================= */
 const refreshToken = catchAsyncErrors(async (req, res, next) => {
   const token = req.cookies.refreshToken;
   if (!token) {
     return res.status(401).json({ success: false, message: "Refresh token required." });
   }
 
-  const user = await User.findOne({ refreshToken: token }).select(
-    "+password +refreshToken +forcePasswordChange"
-  );
+  const user = await User.findOne({ refreshToken: token }).select("+refreshToken");
   if (!user) return res.status(401).json({ success: false, message: "Invalid refresh token." });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
     if (decoded.id !== user._id.toString()) {
       return res.status(401).json({ success: false, message: "Token mismatch." });
-    }
-
-    if (user.forcePasswordChange) {
-      return res.status(403).json({
-        success: false,
-        requiresPasswordChange: true,
-        message: "User must change password first.",
-      });
     }
 
     await sendToken(user, 200, "Access token refreshed.", res);
@@ -445,7 +396,6 @@ const refreshToken = catchAsyncErrors(async (req, res, next) => {
 ------------------------- */
 export {
   login,
-  forceChangePassword,
   logout,
   getUser,
   refreshToken,
