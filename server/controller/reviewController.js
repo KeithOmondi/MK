@@ -1,43 +1,61 @@
-// server/controller/reviewController.js
 import Review from "../models/Review.js";
 import Order from "../models/Order.js";
-import Product from "../models/Product.js";
 
 /* ================================
-   Add a new review
+   Add a new review (post-delivery only)
 ================================ */
 export const addReview = async (req, res) => {
   try {
     const { orderId, productId, rating, comment } = req.body;
     const userId = req.user._id;
 
-    if (!productId || !orderId || rating == null || !comment) {
-      return res.status(400).json({ message: "Order ID, product ID, rating, and comment are required" });
+    if (!orderId || !productId || rating == null || !comment) {
+      return res.status(400).json({
+        message: "Order ID, Product ID, rating, and comment are required",
+      });
     }
 
-    // Check order exists
+    // ✅ Check if order exists and belongs to the logged-in buyer
     const order = await Order.findById(orderId);
-    if (!order) return res.status(404).json({ message: "Order not found" });
-
-    // Only delivered orders can be reviewed
-    if (order.status !== "Delivered") {
-      return res.status(400).json({ message: "You can only review products from delivered orders" });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
     }
 
-    // Check product is part of the order
+    if (order.buyer.toString() !== userId.toString()) {
+      return res.status(403).json({ message: "Unauthorized — order does not belong to you" });
+    }
+
+    // ✅ Only allow reviews for delivered orders
+    if (order.status !== "Delivered") {
+      return res.status(400).json({
+        message: "You can only review products from delivered orders",
+      });
+    }
+
+    // ✅ Check that the product is in the order
     const productInOrder = order.items.find(
-      item => item.productId?.toString() === productId.toString()
+      (item) => item.product.toString() === productId.toString()
     );
-    if (!productInOrder) return res.status(400).json({ message: "Product not in this order" });
 
-    // Prevent duplicate reviews
+    if (!productInOrder) {
+      return res.status(400).json({ message: "Product not part of this order" });
+    }
+
+    // ✅ Prevent duplicate reviews (per order, product, and user)
     const existingReview = await Review.findOne({ orderId, productId, userId });
-    if (existingReview) return res.status(400).json({ message: "You have already reviewed this product" });
+    if (existingReview) {
+      return res.status(400).json({ message: "You have already reviewed this product" });
+    }
 
-    // Create review
-    const review = await Review.create({ productId, orderId, userId, rating, comment });
+    // ✅ Create review
+    const review = await Review.create({
+      productId,
+      orderId,
+      userId,
+      rating,
+      comment,
+    });
 
-    // Populate user info for frontend
     await review.populate("userId", "name email");
 
     res.status(201).json({ success: true, data: review });
@@ -48,14 +66,14 @@ export const addReview = async (req, res) => {
 };
 
 
+
 /* ================================
-   Get reviews by product
+   Get all reviews for a product
 ================================ */
 export const getReviewsByProduct = async (req, res) => {
   try {
     const { id: productId } = req.params;
 
-    // Populate userId to get user's name and email
     const reviews = await Review.find({ productId })
       .populate("userId", "name email")
       .sort({ createdAt: -1 });
@@ -68,7 +86,7 @@ export const getReviewsByProduct = async (req, res) => {
 };
 
 /* ================================
-   Get reviews by user
+   Get reviews by a user
 ================================ */
 export const getReviewsByUser = async (req, res) => {
   try {
@@ -86,7 +104,7 @@ export const getReviewsByUser = async (req, res) => {
 };
 
 /* ================================
-   Update a review
+   Update a review (owner only)
 ================================ */
 export const updateReview = async (req, res) => {
   try {
@@ -102,8 +120,8 @@ export const updateReview = async (req, res) => {
 
     review.rating = rating ?? review.rating;
     review.comment = comment ?? review.comment;
-
     await review.save();
+
     res.status(200).json({ success: true, data: review });
   } catch (err) {
     console.error("Update Review Error:", err);
@@ -112,7 +130,7 @@ export const updateReview = async (req, res) => {
 };
 
 /* ================================
-   Delete a review
+   Delete a review (owner or admin)
 ================================ */
 export const deleteReview = async (req, res) => {
   try {

@@ -4,6 +4,9 @@ import { createSelector } from "reselect";
 import api from "../../api/axios";
 import type { RootState } from "../store";
 
+/* ==========================
+   Interfaces
+========================== */
 export interface Review {
   _id: string;
   productId: string | { _id: string; name?: string };
@@ -33,21 +36,27 @@ const initialState: ReviewState = {
    Async Thunks
 ========================== */
 
-// Add a review
+// ✅ Add a review
 export const addReview = createAsyncThunk<
   Review,
-  { productId: string; orderId: string; rating: number; comment: string },
+  { productId?: string; orderId: string; rating: number; comment: string },
   { rejectValue: string }
 >("reviews/add", async (payload, { rejectWithValue }) => {
   try {
+    if (!payload.productId) {
+      console.warn("⚠️ Missing productId in review payload:", payload);
+    }
+
     const { data } = await api.post("/reviews/add", payload);
+    console.log("✅ Review added successfully:", data);
     return data.data as Review;
   } catch (err: any) {
+    console.error("❌ Add review failed:", err.response?.data || err.message);
     return rejectWithValue(err.response?.data?.message || err.message);
   }
 });
 
-// Get reviews by product
+// ✅ Get reviews by product
 export const getReviewsByProduct = createAsyncThunk<Review[], string, { rejectValue: string }>(
   "reviews/getByProduct",
   async (productId, { rejectWithValue }) => {
@@ -60,7 +69,7 @@ export const getReviewsByProduct = createAsyncThunk<Review[], string, { rejectVa
   }
 );
 
-// Get reviews by user
+// ✅ Get reviews by user
 export const getReviewsByUser = createAsyncThunk<Review[], string, { rejectValue: string }>(
   "reviews/getByUser",
   async (userId, { rejectWithValue }) => {
@@ -73,7 +82,7 @@ export const getReviewsByUser = createAsyncThunk<Review[], string, { rejectValue
   }
 );
 
-// Update review
+// ✅ Update review
 export const updateReview = createAsyncThunk<
   Review,
   { id: string; rating?: number; comment?: string },
@@ -87,12 +96,12 @@ export const updateReview = createAsyncThunk<
   }
 });
 
-// Delete review
+// ✅ Delete review
 export const deleteReview = createAsyncThunk<{ _id: string }, string, { rejectValue: string }>(
   "reviews/delete",
   async (id, { rejectWithValue }) => {
     try {
-      await api.delete(`/reviews/delete${id}`);
+      await api.delete(`/reviews/delete/${id}`);
       return { _id: id };
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
@@ -115,6 +124,7 @@ const reviewSlice = createSlice({
       .addCase(addReview.pending, (state) => {
         state.loading = true;
         state.error = null;
+        state.success = false;
       })
       .addCase(addReview.fulfilled, (state, action: PayloadAction<Review>) => {
         state.loading = false;
@@ -181,13 +191,13 @@ export const selectReviewError = (state: RootState) => state.reviews.error;
 export const selectReviewsByProduct = (productId: string) =>
   createSelector([selectReviews], (reviews) =>
     reviews.filter(
-      (r) => (typeof r.productId === "string" ? r.productId : r.productId._id) === productId
+      (r) => (typeof r.productId === "string" ? r.productId : r.productId?._id) === productId
     )
   );
 
 export const selectReviewsByUser = (userId: string) =>
   createSelector([selectReviews], (reviews) =>
     reviews.filter(
-      (r) => (typeof r.userId === "string" ? r.userId : r.userId._id) === userId
+      (r) => (typeof r.userId === "string" ? r.userId : r.userId?._id) === userId
     )
   );

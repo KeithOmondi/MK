@@ -144,3 +144,40 @@ export const registerNewAdmin = catchAsyncErrors(async (req, res, next) => {
     data: admin,
   });
 });
+
+
+// ==========================
+// Fetch Logged-in User Profile
+// ==========================
+export const fetchUserProfile = catchAsyncErrors(async (req, res, next) => {
+  const user = await User.findById(req.user._id).select("-password"); // Exclude password
+  if (!user) return res.status(404).json({ message: "User not found" });
+  res.status(200).json({ success: true, data: user });
+});
+
+// ==========================
+// Update Logged-in User Profile
+// ==========================
+export const updateUserProfile = catchAsyncErrors(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const { name, email, password } = req.body;
+
+  if (name) user.name = name;
+  if (email) user.email = email;
+  if (password) user.password = password; // Make sure your User model hashes passwords in a pre-save hook
+
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    data: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    message: "Profile updated successfully",
+  });
+});

@@ -25,6 +25,8 @@ import paymentRouter from "./routes/paymentRouter.js";
 import recentlyViewedRouter from "./routes/recentlyViewedRouter.js"
 import reviewRouter from "./routes/reviewRouter.js"
 import adminRouter from "./routes/adminRouter.js"
+import addressRouter from "./routes/addressRouter.js";
+import offersRouter from "./routes/offersRouter.js"
 
 dotenv.config({ path: "./config/.env" });
 
@@ -70,6 +72,8 @@ app.use("/api/v1/payments", paymentRouter);
 app.use("/api/v1/recently-viewed", recentlyViewedRouter);
 app.use("/api/v1/reviews", reviewRouter);
 app.use("/api/v1/admin", adminRouter);
+app.use("/api/v1/addresses", addressRouter);
+app.use("/api/v1/offers", offersRouter);
 
 // ✅ Global error handler
 app.use(errorMiddleware);

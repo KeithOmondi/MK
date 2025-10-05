@@ -49,12 +49,7 @@ router.get(
 );
 
 // ✅ Update order status → Admin or Supplier
-router.put(
-  "/update/:id/status",
-  isAuthenticated,
-  isAuthorized("Admin", "Supplier"),
-  updateOrderStatus
-);
+router.put("/update/:id/status", isAuthenticated, isAuthorized("Admin", "Supplier"), updateOrderStatus);
 
 // ✅ Delete order → Admin only
 router.delete(

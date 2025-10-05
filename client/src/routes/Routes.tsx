@@ -37,6 +37,11 @@ import SupplierOrders from "../pages/Supplier/SupplierOrders";
 import SupplierOrderDetails from "../pages/Supplier/SupplierOrderDetails";
 import ForceChangePassword from "../pages/auth/ForceChangePassword";
 import AdminUsers from "../pages/admin/AdminUsers";
+import Profile from "../pages/User/Profile";
+import Addresses from "../pages/User/Addresses";
+import OffersPage from "../pages/User/Offers";
+import UserChat from "../pages/User/UserChat";
+import SupplierChat from "../pages/Supplier/SupplierChat";
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -53,6 +58,26 @@ export const userRoutes = [
   { path: "/user/orders/:id", element: (
     <UserLayout>
       <OrderDetails/>
+    </UserLayout>
+  ) },
+  { path: "/user/profile", element: (
+    <UserLayout>
+      <Profile/>
+    </UserLayout>
+  ) },
+  { path: "/user/addresses", element: (
+    <UserLayout>
+      <Addresses />
+    </UserLayout>
+  ) },
+  { path: "/user/coupons", element: (
+    <UserLayout>
+      <OffersPage />
+    </UserLayout>
+  ) },
+  { path: "/user/support", element: (
+    <UserLayout>
+      <UserChat />
     </UserLayout>
   ) },
   // ✅ Sensitive routes WITHOUT UserLayout
@@ -137,6 +162,14 @@ export const supplierRoutes = [
     element: (
       <SupplierLayout>
         <SupplierOrders />
+      </SupplierLayout>
+    ),
+  },
+  {
+    path: "/supplier/chat",
+    element: (
+      <SupplierLayout>
+        <SupplierChat />
       </SupplierLayout>
     ),
   },

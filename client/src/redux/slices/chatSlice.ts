@@ -1,16 +1,18 @@
 // src/redux/slices/chatSlice.ts
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
-import type { RootState } from "../store";
+import type { RootState, AppDispatch } from "../store";
 import api from "../../api/axios";
 
 // ==========================
 // Types
 // ==========================
+export type ChatType = "text" | "image" | "audio";
+
 export interface ChatMessage {
   _id: string;
   sender: string;
   receiver: string;
-  type: "text" | "image" | "audio";
+  type: ChatType;
   message?: string;
   mediaUrl?: string;
   order: string;
@@ -42,74 +44,74 @@ const initialState: ChatState = {
 // ==========================
 
 // Send message
-export const sendMessage = createAsyncThunk(
-  "chat/sendMessage",
-  async (
-    payload: { receiverId: string; orderId: string; message?: string; type?: string; file?: File },
-    { rejectWithValue }
-  ) => {
-    try {
-      const formData = new FormData();
-      formData.append("receiverId", payload.receiverId);
-      formData.append("orderId", payload.orderId);
-      if (payload.message) formData.append("message", payload.message);
-      if (payload.type) formData.append("type", payload.type);
-      if (payload.file) formData.append("file", payload.file);
+export const sendMessage = createAsyncThunk<
+  ChatMessage,
+  { receiverId: string; orderId: string; message?: string; type?: string; file?: File },
+  { rejectValue: string; dispatch: AppDispatch }
+>("chat/sendMessage", async (payload, { rejectWithValue }) => {
+  try {
+    // Ensure type is valid
+    const messageType: ChatType =
+      payload.type === "image" ? "image" : payload.type === "audio" ? "audio" : "text";
 
-      const { data } = await api.post("/chat/send", formData, {
-        withCredentials: true,
-      });
-      return data.data as ChatMessage;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
-  }
-);
+    const formData = new FormData();
+    formData.append("receiverId", payload.receiverId);
+    formData.append("orderId", payload.orderId);
+    formData.append("type", messageType);
+    if (payload.message) formData.append("message", payload.message);
+    if (payload.file) formData.append("file", payload.file);
 
-// Get conversation
-export const getMessages = createAsyncThunk(
-  "chat/getMessages",
-  async (
-    { userId, orderId, page = 1, limit = 20 }: { userId: string; orderId: string; page?: number; limit?: number },
-    { rejectWithValue }
-  ) => {
-    try {
-      const { data } = await api.get(
-        `/chat/get/${userId}/${orderId}?page=${page}&limit=${limit}`,
-        { withCredentials: true }
-      );
-      return data.messages as ChatMessage[];
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
+    const { data } = await api.post("/chat/send", formData, { withCredentials: true });
+
+    return data.data as ChatMessage;
+  } catch (err: any) {
+    return rejectWithValue(err.response?.data?.message || err.message);
   }
-);
+});
+
+// Get messages
+export const getMessages = createAsyncThunk<
+  ChatMessage[],
+  { userId: string; orderId: string; page?: number; limit?: number },
+  { rejectValue: string }
+>("chat/getMessages", async ({ userId, orderId, page = 1, limit = 20 }, { rejectWithValue }) => {
+  try {
+    const { data } = await api.get(`/chat/get/${userId}/${orderId}?page=${page}&limit=${limit}`, {
+      withCredentials: true,
+    });
+    return data.messages as ChatMessage[];
+  } catch (err: any) {
+    return rejectWithValue(err.response?.data?.message || err.message);
+  }
+});
 
 // Get chat list
-export const getChatList = createAsyncThunk(
-  "chat/getChatList",
-  async (_, { rejectWithValue }) => {
-    try {
-      const { data } = await api.get("/chat/list", { withCredentials: true });
-      return data.chats as ChatPreview[];
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
+export const getChatList = createAsyncThunk<
+  ChatPreview[],
+  void,
+  { rejectValue: string }
+>("chat/getChatList", async (_, { rejectWithValue }) => {
+  try {
+    const { data } = await api.get("/chat/list", { withCredentials: true });
+    return data.chats as ChatPreview[];
+  } catch (err: any) {
+    return rejectWithValue(err.response?.data?.message || err.message);
   }
-);
+});
 
 // Mark messages as read
-export const markAsRead = createAsyncThunk(
-  "chat/markAsRead",
-  async ({ senderId, orderId }: { senderId: string; orderId: string }, { rejectWithValue }) => {
-    try {
-      const { data } = await api.put(`/chat/mark-as-read/${senderId}/${orderId}`, {}, { withCredentials: true });
-      return data;
-    } catch (err: any) {
-      return rejectWithValue(err.response?.data?.message || err.message);
-    }
+export const markAsRead = createAsyncThunk<
+  any,
+  { senderId: string; orderId: string },
+  { rejectValue: string }
+>("chat/markAsRead", async ({ senderId, orderId }, { rejectWithValue }) => {
+  try {
+    const { data } = await api.put(`/chat/mark-as-read/${senderId}/${orderId}`, {}, { withCredentials: true });
+    return data;
+  } catch (err: any) {
+    return rejectWithValue(err.response?.data?.message || err.message);
   }
-);
+});
 
 // ==========================
 // Slice
@@ -150,13 +152,12 @@ const chatSlice = createSlice({
 
       // Mark as read
       .addCase(markAsRead.fulfilled, (state) => {
-        // we could also update message "read" flags locally if needed
+        // optionally update local messages as read
       });
   },
 });
 
 export const { resetChatState, addIncomingMessage } = chatSlice.actions;
-
 export default chatSlice.reducer;
 
 // ==========================

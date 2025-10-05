@@ -10,6 +10,7 @@ import {
   MdPerson,
   MdLock,
   MdLogout,
+  MdChat,
 } from "react-icons/md";
 import { useDispatch } from "react-redux";
 import toast from "react-hot-toast";
@@ -32,6 +33,7 @@ const SupplierSidebar: React.FC = () => {
     { to: "/supplier/products/add", label: "Add Product", icon: <MdAddBox size={20} /> },
     { to: "/supplier/orders", label: "Customer Orders", icon: <MdReceipt size={20} /> },
     { to: "/supplier/analytics", label: "Sales Analytics", icon: <MdTrendingUp size={20} /> },
+    { to: "/supplier/chat", label: "Chat", icon: <MdChat size={20} /> },
     { to: "/supplier/profile", label: "Profile", icon: <MdPerson size={20} /> },
     { to: "/change-password", label: "Change Password", icon: <MdLock size={20} /> },
   ];

@@ -1,4 +1,3 @@
-// server/routes/reviewRoutes.js
 import express from "express";
 import { isAuthenticated } from "../middlewares/authMiddleware.js";
 import {
@@ -21,7 +20,7 @@ router.post("/add", isAuthenticated, addReview);
 // Get reviews for a product (public)
 router.get("/product/:id", getReviewsByProduct);
 
-// Get reviews by a user (authenticated)
+// Get reviews by a user (authenticated, only for their own reviews)
 router.get("/user/:id", isAuthenticated, getReviewsByUser);
 
 // Update a review (authenticated, author only)

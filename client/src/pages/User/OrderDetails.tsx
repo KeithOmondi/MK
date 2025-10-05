@@ -19,7 +19,7 @@ import {
 } from "../../redux/slices/reviewSlice";
 
 import type { AppDispatch, RootState } from "../../redux/store";
-import type { Review as ReviewSliceType } from "../../redux/slices/reviewSlice";
+import type { Review, Review as ReviewSliceType } from "../../redux/slices/reviewSlice";
 
 // ------------------------ Types ------------------------
 interface Product {
@@ -29,12 +29,21 @@ interface Product {
   price: number;
 }
 
-
 interface ProductReviewState {
   [productId: string]: {
     rating: number;
     comment: string;
   };
+}
+
+interface OrderItem {
+  productId?: string | { _id: string; name?: string };
+  product?: string | { _id: string; name?: string };
+}
+
+interface Order {
+  items: OrderItem[];
+  _id: string;
 }
 
 // ------------------------ Star Rating Component ------------------------
@@ -62,7 +71,7 @@ const StarRating: React.FC<{
   </div>
 );
 
-// ------------------------ Status Badge Helpers ------------------------
+// ------------------------ Helpers ------------------------
 const getStatusClasses = (status: string) => {
   switch (status) {
     case "Delivered":
@@ -102,14 +111,32 @@ const OrderDetails: React.FC = () => {
 
   const [productReviewStates, setProductReviewStates] = useState<ProductReviewState>({});
 
-  // Precompute reviews for all products
-  const reviewsByProduct = useSelector((state: RootState) => {
-    const obj: Record<string, ReviewSliceType[]> = {};
-    order?.items.forEach((item) => {
-      obj[item.productId] = selectReviewsByProduct(item.productId)(state);
-    });
-    return obj;
+ const reviewsByProduct = useSelector((state: RootState) => {
+  const obj: Record<string, Review[]> = {};
+
+  order?.items?.forEach((item) => {
+    let pid: string | undefined;
+
+    // Safely resolve productId from item
+    if (typeof item.productId === "object" && item.productId) {
+      pid = item.productId;
+    } else if (typeof item.productId === "string") {
+      pid = item.productId;
+    } else if (typeof item.productId === "object" && item.productId) {
+      pid = item.productId;
+    } else if (typeof item.productId === "string") {
+      pid = item.productId;
+    }
+
+    // Only select if we have a valid productId
+    if (pid) {
+      obj[pid] = selectReviewsByProduct(pid)(state);
+    }
   });
+
+  return obj;
+});
+
 
   useEffect(() => {
     if (id) dispatch(fetchOrderById(id));
@@ -123,38 +150,46 @@ const OrderDetails: React.FC = () => {
     }));
   };
 
-  const handleReviewSubmit = (productId: string) => {
-    if (order?.status !== "Delivered") {
-      toast.error("You can only review delivered products.");
-      return;
-    }
+  const handleReviewSubmit = (rawProductId: any) => {
+  // Resolve real productId
+  const productId =
+    typeof rawProductId === "object"
+      ? rawProductId?._id
+      : typeof rawProductId === "string"
+      ? rawProductId
+      : typeof (rawProductId as any)?.product === "object"
+      ? (rawProductId as any)?.product?._id
+      : (rawProductId as any)?.product || undefined;
 
-    const reviewState = productReviewStates[productId];
-    const rating = reviewState?.rating || 0;
-    const comment = reviewState?.comment?.trim() || "";
+  if (!productId) {
+    toast.error("Unable to determine product ID for review submission.");
+    return;
+  }
 
-    if (!rating || !comment) {
-      toast.error("Please provide both rating and comment.");
-      return;
-    }
+  const reviewState = productReviewStates[productId];
+  const rating = reviewState?.rating || 0;
+  const comment = reviewState?.comment?.trim() || "";
 
-    dispatch(
-      addReviewSlice({
-        productId,
-        orderId: id!,
-        rating,
-        comment,
-      })
-    )
-      .unwrap()
-      .then(() => toast.success("Review submitted!"))
-      .catch((err) => toast.error(err));
+  if (!rating || !comment) {
+    toast.error("Please provide both rating and comment.");
+    return;
+  }
 
-    setProductReviewStates((prev) => ({
-      ...prev,
-      [productId]: { rating: 0, comment: "" },
-    }));
-  };
+  console.log("🧾 Review Payload:", { productId, orderId: id, rating, comment });
+
+  dispatch(
+    addReviewSlice({
+      productId,
+      orderId: id!,
+      rating,
+      comment,
+    })
+  )
+    .unwrap()
+    .then(() => toast.success("Review submitted!"))
+    .catch((err) => toast.error(`Failed: ${err}`));
+};
+
 
   const handleRefund = () => {
     if (window.confirm("Request a refund for this order?")) {
@@ -187,6 +222,8 @@ const OrderDetails: React.FC = () => {
 
   const delivery = order.deliveryDetails || {};
   const statusClasses = getStatusClasses(order.status || "");
+
+  console.log("🧩 Order items:", order.items);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto min-h-screen">
@@ -223,23 +260,37 @@ const OrderDetails: React.FC = () => {
         {/* Items */}
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-xl font-bold text-gray-700 mb-4">Items in Your Order</h2>
-          {order.items.map((item, index) => {
-            // Type guard for product object
+
+          {order.items.map((item: any, index: number) => {
+            // Detect product safely
+            const raw = item.productId || item.product;
+            const productId =
+              typeof raw === "object"
+                ? raw?._id
+                : typeof raw === "string"
+                ? raw
+                : undefined;
+
             const product: Product =
-              typeof item.productId === "object"
-                ? item.productId
-                : { _id: item.productId, name: "Product", image: "", price: item.price };
+              typeof raw === "object"
+                ? {
+                    _id: raw?._id || "unknown",
+                    name: raw?.name || "Product",
+                    image: raw?.image || "",
+                    price: raw?.price || item.price || 0,
+                  }
+                : { _id: productId || "unknown", name: "Product", image: "", price: item.price };
 
-            const existingReview = reviewsByProduct[item.productId]?.find(
-              (r: ReviewSliceType) => r.orderId === order._id
-            );
+            const existingReview = productId
+              ? reviewsByProduct[productId]?.find((r) => r.orderId === order._id)
+              : undefined;
 
-            const currentRating = productReviewStates[item.productId]?.rating || 0;
-            const currentComment = productReviewStates[item.productId]?.comment || "";
+            const currentRating = productId ? productReviewStates[productId]?.rating || 0 : 0;
+            const currentComment = productId ? productReviewStates[productId]?.comment || "" : "";
 
             return (
               <div
-                key={`${item.productId}-${index}`}
+                key={`${productId}-${index}`}
                 className="bg-white border rounded-xl p-5 flex flex-col md:flex-row gap-5 shadow-lg hover:shadow-xl"
               >
                 <div className="flex items-center gap-4 w-full md:w-2/3">
@@ -260,40 +311,50 @@ const OrderDetails: React.FC = () => {
                   </div>
                 </div>
 
-                {order.status === "Delivered" && (
-                  <div className="w-full md:w-1/3 flex flex-col justify-center border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-5">
-                    {existingReview ? (
-                      <div>
-                        <p className="font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                          Your Review <span className="text-xs text-green-600">(Submitted)</span>
-                        </p>
-                        <StarRating rating={existingReview.rating} readOnly size="text-xl" />
-                        <p className="text-sm text-gray-600 mt-2 italic">"{existingReview.comment}"</p>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="font-semibold text-gray-700 mb-2">Leave a Review</p>
-                        <StarRating
-                          rating={currentRating}
-                          setRating={(r) => handleReviewChange(item.productId, "rating", r)}
-                        />
-                        <textarea
-                          value={currentComment}
-                          onChange={(e) => handleReviewChange(item.productId, "comment", e.target.value)}
-                          placeholder="Tell us what you think..."
-                          rows={2}
-                          className="w-full border rounded-lg p-3 my-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <button
-                          onClick={() => handleReviewSubmit(item.productId)}
-                          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          Post Review ✨
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
+                {order?.status?.toLowerCase() === "delivered" && (
+  <div className="w-full md:w-1/3 flex flex-col justify-center border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-5">
+    {existingReview ? (
+      <div>
+        <p className="font-semibold text-gray-700 mb-1 flex items-center gap-1">
+          Your Review{" "}
+          <span className="text-xs text-green-600">(Submitted)</span>
+        </p>
+        <StarRating rating={existingReview.rating} readOnly size="text-xl" />
+        <p className="text-sm text-gray-600 mt-2 italic">
+          "{existingReview.comment}"
+        </p>
+      </div>
+    ) : (
+      <>
+        <p className="font-semibold text-gray-700 mb-2">Leave a Review</p>
+        <StarRating
+          rating={currentRating}
+          setRating={(r) =>
+            productId && handleReviewChange(productId, "rating", r)
+          }
+        />
+        <textarea
+          value={currentComment}
+          onChange={(e) =>
+            productId && handleReviewChange(productId, "comment", e.target.value)
+          }
+          placeholder="Tell us what you think..."
+          rows={2}
+          className="w-full border rounded-lg p-3 my-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+        <button
+          onClick={() =>
+            handleReviewSubmit(item.productId || (item as any).product)
+          }
+          className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Post Review ✨
+        </button>
+      </>
+    )}
+  </div>
+)}
+
               </div>
             );
           })}

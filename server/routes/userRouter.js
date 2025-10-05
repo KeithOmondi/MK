@@ -6,6 +6,8 @@ import {
   updateUser,
   deleteUser,
   registerNewAdmin,
+  fetchUserProfile,
+  updateUserProfile,
 } from "../controller/userController.js";
 
 const router = express.Router();
@@ -24,5 +26,11 @@ router.delete("/delete/:id", isAuthenticated, isAuthorized("Admin"), deleteUser)
 
 // ✅ Register a new Admin
 router.post("/admins", isAuthenticated, isAuthorized("Admin"), registerNewAdmin);
+
+// Get logged-in user's profile
+router.get("/profile", isAuthenticated, fetchUserProfile);
+
+// Update logged-in user's profile
+router.put("/profile", isAuthenticated, updateUserProfile);
 
 export default router;

@@ -11,6 +11,9 @@ import cartReducer from "./slices/cartSlice";
 import recentlyViewedReducer from "./slices/recentlyViewedSlice"
 import reviewReducer from "./slices/reviewSlice"
 import adminDashboardReducer from "./slices/adminDashboardSlice"
+import addressReducer from "./slices/addressSlice";
+import offersReducer from "./slices/offersSlice";
+import wishlistReducer from "./slices/wishlistSlice"
 
 export const store = configureStore({
   reducer: {
@@ -23,9 +26,12 @@ export const store = configureStore({
      chat: chatReducer,
      analytics: analyticsReducer,
      cart: cartReducer,
+     wishlist: wishlistReducer,
      recentlyViewed: recentlyViewedReducer,
      reviews: reviewReducer,
      adminDashboard: adminDashboardReducer,
+     address: addressReducer,
+     offers: offersReducer,
   },
 });
 

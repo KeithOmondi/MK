@@ -18,13 +18,17 @@ export const sendMessage = catchAsyncErrors(async (req, res, next) => {
     return next(new ErrorHandler(400, "Receiver and orderId are required"));
   }
 
-  // Check that the order exists and the sender/receiver are linked
+  // Check that the order exists and sender/receiver are linked
   const order = await Order.findById(orderId);
   if (!order) return next(new ErrorHandler(404, "Order not found"));
 
   const isValid =
-    (sender.role === "User" && order.buyer.toString() === sender._id.toString() && order.supplier.toString() === receiverId) ||
-    (sender.role === "Supplier" && order.supplier.toString() === sender._id.toString() && order.buyer.toString() === receiverId);
+    (sender.role === "User" &&
+      order.buyer.toString() === sender._id.toString() &&
+      order.supplier.toString() === receiverId) ||
+    (sender.role === "Supplier" &&
+      order.supplier.toString() === sender._id.toString() &&
+      order.buyer.toString() === receiverId);
 
   if (!isValid) {
     return next(
@@ -52,6 +56,7 @@ export const sendMessage = catchAsyncErrors(async (req, res, next) => {
   // Sanitize phone numbers
   const sanitizedMessage = message?.replace(phoneRegex, "[hidden]") || null;
 
+  // Create message
   const newMessage = await Chat.create({
     sender: sender._id,
     receiver: receiverId,
@@ -61,11 +66,13 @@ export const sendMessage = catchAsyncErrors(async (req, res, next) => {
     order: orderId,
   });
 
-  // Emit to receiver via Socket.IO
+  // Emit message to receiver via Socket.IO
   const io = req.app.get("io");
-  const receiverSocket = io ? io.sockets.sockets.get(receiverId) : null;
-  if (receiverSocket) {
-    io.to(receiverSocket.id).emit("newMessage", newMessage);
+  const onlineUsers = req.app.get("onlineUsers");
+  const receiverSocketId = onlineUsers ? onlineUsers.get(receiverId) : null;
+
+  if (receiverSocketId && io) {
+    io.to(receiverSocketId).emit("newMessage", newMessage);
   }
 
   res.status(201).json({ success: true, data: newMessage });
@@ -85,14 +92,16 @@ export const getMessages = catchAsyncErrors(async (req, res, next) => {
   if (!order) return next(new ErrorHandler(404, "Order not found"));
 
   const isValid =
-    (sender.role === "User" && order.buyer.toString() === sender._id.toString() && order.supplier.toString() === userId) ||
-    (sender.role === "Supplier" && order.supplier.toString() === sender._id.toString() && order.buyer.toString() === userId);
+    (sender.role === "User" &&
+      order.buyer.toString() === sender._id.toString() &&
+      order.supplier.toString() === userId) ||
+    (sender.role === "Supplier" &&
+      order.supplier.toString() === sender._id.toString() &&
+      order.buyer.toString() === userId);
 
   if (!isValid) return next(new ErrorHandler(403, "Not authorized"));
 
-  const totalMessages = await Chat.countDocuments({
-    order: orderId,
-  });
+  const totalMessages = await Chat.countDocuments({ order: orderId });
 
   let messages = await Chat.find({ order: orderId })
     .sort({ createdAt: -1 })

@@ -236,6 +236,32 @@ export const registerNewAdmin = createAsyncThunk<
   }
 });
 
+// Fetch User Profile
+export const fetchUserProfile = createAsyncThunk<User>(
+  "auth/fetchUserProfile",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get("/user/profile");
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
+// Update User Profile
+export const updateUserProfile = createAsyncThunk<User, Partial<User>>(
+  "auth/updateUserProfile",
+  async (updates, { rejectWithValue }) => {
+    try {
+      const { data } = await api.put("/user/profile", updates);
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || err.message);
+    }
+  }
+);
+
 // ==========================
 // Slice
 // ==========================
@@ -385,6 +411,36 @@ const authSlice = createSlice({
     builder.addCase(registerNewAdmin.rejected, (state, action) =>
       rejectedHandler(state, action, "Failed to register admin")
     );
+
+    builder
+      // Fetch User Profile
+      .addCase(fetchUserProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchUserProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+      })
+      .addCase(fetchUserProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      // Update User Profile
+      .addCase(updateUserProfile.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+        state.success = null;
+      })
+      .addCase(updateUserProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload;
+        state.success = "Profile updated successfully";
+      })
+      .addCase(updateUserProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
   },
 });
 

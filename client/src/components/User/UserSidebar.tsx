@@ -10,7 +10,7 @@ import {
   MdLock,
   MdLogout,
   MdLocationOn,
-  MdPayment,
+  //MdPayment,
   MdCardGiftcard,
   MdHelp,
   MdSettings,
@@ -41,7 +41,7 @@ const UserSidebar: React.FC = () => {
     // === Account ===
     { to: "/user/profile", label: "Profile", icon: <MdPerson size={20} />, section: "Account" },
     { to: "/user/addresses", label: "Addresses", icon: <MdLocationOn size={20} />, section: "Account" },
-    { to: "/user/payments", label: "Payment Methods", icon: <MdPayment size={20} />, section: "Account" },
+    //{ to: "/user/payments", label: "Payment Methods", icon: <MdPayment size={20} />, section: "Account" },
     { to: "/user/coupons", label: "Coupons & Rewards", icon: <MdCardGiftcard size={20} />, section: "Account" },
     { to: "/user/settings", label: "Account Settings", icon: <MdSettings size={20} />, section: "Account" },
     { to: "/change-password", label: "Change Password", icon: <MdLock size={20} />, section: "Account" },

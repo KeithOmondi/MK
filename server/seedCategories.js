@@ -1,7 +1,7 @@
-// scripts/seedCategories.js
 import mongoose from "mongoose";
 import Category from "./models/Category.js";
 
+// ✅ Organized Category structure
 const categories = [
   {
     name: "Electronics",
@@ -10,37 +10,25 @@ const categories = [
       "Headphones",
       "Computers & Accessories",
       "Security & Surveillance",
-      "Accessories and Supplies",
       "Office Electronics",
+      "Apple",
+      "TV & Audio",
+      "Cameras & Photography",
+      "Gaming Consoles",
     ],
   },
   {
-    name: "Men's Fashion",
-    icon: "ShoppingBag",
-    subcategories: ["Shoes", "Watches", "Clothing", "Accessories"],
-  },
-  {
-    name: "Women's Fashion",
+    name: "Fashion",
     icon: "ShoppingBag",
     subcategories: [
+      "Men's Fashion",
+      "Women's Fashion",
+      "Kids' Fashion",
       "Shoes",
       "Watches",
       "Jewellery",
-      "Handbags",
-      "Clothing",
       "Accessories",
-    ],
-  },
-  {
-    name: "Boys & Girls Fashion",
-    icon: "ShoppingBag",
-    subcategories: [
-      "Shoes",
-      "Watches",
-      "Jewellery",
-      "Handbags",
-      "Clothing",
-      "Accessories",
+      "Bags & Luggage",
     ],
   },
   {
@@ -48,54 +36,62 @@ const categories = [
     icon: "Home",
     subcategories: [
       "Kitchen & Dining",
-      "Wall Art",
-      "Light & Ceiling",
-      "Cleaning Supplies",
-      "Iron and Steamers",
       "Furniture",
+      "Wall Art",
+      "Lighting & Ceiling",
+      "Cleaning Supplies",
+      "Bedding",
       "Bathing",
-      "Heating, Cooling & Air Quality",
+      "Heating & Cooling",
       "Storage & Organization",
       "Vacuums & Floor Care",
-      "Bedding",
+      "Home Decor",
     ],
   },
   {
-    name: "Eyeglasses",
-    icon: "Eye",
+    name: "Eyewear",
+    icon: "Glasses",
     subcategories: ["Prescription", "Sunglasses", "Blue Light"],
   },
   {
     name: "Beauty & Personal Care",
-    icon: "Eye",
+    icon: "Heart",
     subcategories: [
+      "Skin Care",
+      "Hair Care",
+      "Makeup",
+      "Fragrance",
+      "Nail, Foot & Hand Care",
       "Oral Care",
       "Personal Care",
-      "Shave and Hair Removal",
-      "Nail, Foot & Hand Care",
-      "Fragrance",
-      "Hair Care",
-      "Skin Care",
-      "Makeup",
+      "Shaving & Hair Removal",
     ],
   },
   {
-    name: "Apple Store",
-    icon: "Apple",
-    subcategories: ["iPhone", "MacBook", "iPad", "Accessories"],
+    name: "Sports & Outdoors",
+    icon: "Dumbbell",
+    subcategories: [
+      "Fitness",
+      "Outdoor Recreation",
+      "Team Sports",
+      "Cycling",
+      "Camping & Hiking",
+    ],
   },
   {
-    name: "Sports and Outdoor",
-    icon: "Eye",
+    name: "Grocery",
+    icon: "ShoppingCart",
     subcategories: [
-      "Sports & Outdoor",
-      "Outdoor Recreation",
-      "Sports & Fitness",
+      "Beverages",
+      "Snacks",
+      "Cooking Essentials",
+      "Household Supplies",
+      "Organic & Health Foods",
     ],
   },
 ];
 
-// ✅ Plain JS slugify
+// ✅ Simple JS slugify
 const slugify = (str) =>
   str
     .toLowerCase()
@@ -103,6 +99,7 @@ const slugify = (str) =>
     .trim()
     .replace(/\s+/g, "-");
 
+// ===== Seed Function =====
 const seed = async () => {
   try {
     await mongoose.connect(
@@ -111,6 +108,7 @@ const seed = async () => {
 
     console.log("✅ Connected to DB");
 
+    // Clear old categories
     await Category.deleteMany({});
     console.log("🗑️ Old categories cleared");
 
@@ -124,7 +122,6 @@ const seed = async () => {
       for (const sub of cat.subcategories) {
         await Category.create({
           name: sub,
-          // ✅ Unique slug with parent name included
           slug: slugify(`${cat.name}-${sub}`),
           parentCategory: parent._id,
         });

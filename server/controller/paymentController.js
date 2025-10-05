@@ -3,6 +3,12 @@ import Order from "../models/Order.js";
 import PendingPayment from "../models/PendingPayment.js";
 import axios from "axios";
 import moment from "moment";
+import Reward from "../models/RewardModel.js"
+
+
+
+
+const POINTS_RATE = 1; // 1 point per 1 currency unit paid
 
 /* ------------------ Helper: Get M-Pesa OAuth Token ------------------ */
 const getAccessToken = async () => {
@@ -111,7 +117,6 @@ if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
 });
 
 
-/* ------------------------ LIPAPAY CALLBACK ------------------------ */
 export const lipPayCallback = asyncHandler(async (req, res) => {
   const { Body } = req.body;
   if (!Body?.stkCallback) {
@@ -129,7 +134,7 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
   }
 
   if (callback.ResultCode === 0) {
-    // Success
+    // ✅ Success
     pending.order.paymentStatus = "paid";
     pending.order.status = "Processing";
     pending.order.transactionId = callback.CheckoutRequestID;
@@ -139,9 +144,34 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
     pending.status = "completed";
     await pending.save();
 
-    console.log(`✅ Payment completed for Order ${pending.order._id}`);
+    // 🎁 Award reward points
+    try {
+      const pointsEarned = Math.floor(pending.order.totalAmount * POINTS_RATE);
+
+      let reward = await Reward.findOne({ user: pending.order.user });
+      if (!reward) {
+        reward = await Reward.create({
+          user: pending.order.user,
+          points: 0,
+          history: [],
+        });
+      }
+
+      reward.points += pointsEarned;
+      reward.history.push({
+        order: pending.order._id,
+        pointsEarned,
+      });
+
+      await reward.save();
+      console.log(`✅ ${pointsEarned} points awarded to user ${pending.order.user}`);
+    } catch (rewardError) {
+      console.error("❌ Failed to assign reward points:", rewardError.message);
+    }
+
+    console.log(`💰 Payment completed for Order ${pending.order._id}`);
   } else {
-    // Failed
+    // ❌ Failed
     pending.order.paymentStatus = "failed";
     pending.order.status = "Pending";
     await pending.order.save();
@@ -157,6 +187,7 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
 
   res.json({ success: true });
 });
+
 
 /* ------------------------ CHECK PAYMENT STATUS ------------------------ */
 export const getPaymentStatus = asyncHandler(async (req, res) => {

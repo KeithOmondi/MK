@@ -1,15 +1,26 @@
+// src/controllers/productController.js
 import Product from "../models/Product.js";
-import asyncHandler from "express-async-handler";
-import { uploadToCloudinary, deleteFromCloudinary } from "../utils/uploadToCloudinary.js";
 import Supplier from "../models/Supplier.js";
 import Category from "../models/Category.js";
+import asyncHandler from "express-async-handler";
+import { uploadToCloudinary, deleteFromCloudinary } from "../utils/uploadToCloudinary.js";
 
+/* -------------------- HELPERS -------------------- */
+const validateDimensions = (dim) => {
+  if (!dim) return false;
+  const { length, width, height } = dim;
+  return [length, width, height].every((v) => typeof v === "number" && v >= 0);
+};
 
-// ==============================
-// @desc    Create product
-// @route   POST /api/products
-// @access  Private (Admin/Supplier)
-// ==============================
+const validateVariants = (variants) =>
+  Array.isArray(variants) &&
+  variants.every(
+    (v) =>
+      (v.price == null || (typeof v.price === "number" && v.price >= 0)) &&
+      (v.stock == null || (typeof v.stock === "number" && v.stock >= 0))
+  );
+
+/* -------------------- CREATE PRODUCT -------------------- */
 export const createProduct = asyncHandler(async (req, res) => {
   const {
     name,
@@ -17,288 +28,260 @@ export const createProduct = asyncHandler(async (req, res) => {
     category,
     price,
     oldPrice,
-    stock,
-    status: productStatus,
     brand,
-    color,
-    size,
-    sections,
+    stock,
     weight,
-    dimensions,
+    dimensions: rawDimensions,
     shippingRegions,
     deliveryTime,
-    freeShipping,
     warehouseLocation,
     returnPolicy,
     warranty,
+    sections,
+    freeShipping,
+    flashSale = {},
+    variants: rawVariants,
   } = req.body;
 
-  // 🔹 Supplier validation
+  if (!name || !description || !category || price == null)
+    throw new Error("Name, description, category, and price are required.");
+  if (price < 0) throw new Error("Price cannot be negative.");
+  if (oldPrice != null && oldPrice < price) throw new Error("Old price cannot be less than current price.");
+
   const supplier = await Supplier.findOne({ user: req.user._id });
-  if (!supplier && req.user.role !== "Admin") {
-    res.status(403);
-    throw new Error("You must register as a supplier first");
+  if (!supplier) throw new Error("You must register as a supplier first.");
+
+  const categoryExists = await Category.findById(category);
+  if (!categoryExists) throw new Error("Category not found.");
+
+  if (flashSale.startDate && flashSale.endDate && new Date(flashSale.endDate) <= new Date(flashSale.startDate))
+    throw new Error("Flash sale endDate must be after startDate.");
+
+  let dimensions = { length: 0, width: 0, height: 0 };
+  if (rawDimensions) {
+    try {
+      dimensions = typeof rawDimensions === "string" ? JSON.parse(rawDimensions) : rawDimensions;
+    } catch {
+      throw new Error("Invalid dimensions format.");
+    }
+    if (!validateDimensions(dimensions)) throw new Error("Invalid dimensions.");
   }
 
-  // 🔹 Cloudinary uploads
-  let imageUrls = [];
-  if (req.files?.length > 0) {
-    const uploadResults = await Promise.all(
-      req.files.map((file) => uploadToCloudinary(file.buffer))
-    );
-    imageUrls = uploadResults;
+  let variants = [];
+  if (rawVariants) {
+    try {
+      variants = typeof rawVariants === "string" ? JSON.parse(rawVariants) : rawVariants;
+    } catch {
+      throw new Error("Invalid variants format.");
+    }
+    if (!validateVariants(variants)) throw new Error("Invalid variant data.");
   }
 
-  // 🔹 Section validation
+  if (!req.files?.length) throw new Error("At least one image is required.");
+  const uploadResults = await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)));
+  const successfulUploads = uploadResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (!successfulUploads.length) throw new Error("Image upload failed.");
+
   const allowedSections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
-  let formattedSections = sections
-    ? (Array.isArray(sections) ? sections : [sections]).filter((s) =>
-        allowedSections.includes(s)
-      )
-    : [];
+  const formattedSections = (Array.isArray(sections) ? sections : [sections])
+    .filter(Boolean)
+    .filter((s) => allowedSections.includes(s));
 
-  // ✅ Default to "NewArrivals" if none provided
-  if (formattedSections.length === 0) {
-    formattedSections = ["NewArrivals"];
-  }
-
-  // 🔹 Create product
-  const product = new Product({
-    name,
-    description,
+  const product = await Product.create({
+    name: name.trim(),
+    description: description.trim(),
     category,
+    supplier: supplier._id,
     price,
     oldPrice: oldPrice ?? null,
-    stock,
-    brand,
-    color,
-    size,
-    images: imageUrls,
-    supplier: supplier ? supplier._id : null,
-    status: productStatus || "active",
-    sections: formattedSections,
+    brand: brand?.trim(),
+    stock: stock ?? null,
     weight,
     dimensions,
-    shippingRegions: shippingRegions ? shippingRegions.split(",") : [],
+    images: successfulUploads,
+    sections: formattedSections.length ? formattedSections : ["NewArrivals"],
+    shippingRegions: shippingRegions ? shippingRegions.split(",").map((r) => r.trim()) : [],
     deliveryTime,
-    freeShipping,
+    freeShipping: freeShipping ?? false,
     warehouseLocation,
     returnPolicy,
     warranty,
+    flashSale: {
+      isActive: flashSale.isActive ?? false,
+      discountPercentage: flashSale.discountPercentage ?? 0,
+      startDate: flashSale.startDate ?? null,
+      endDate: flashSale.endDate ?? null,
+    },
+    variants,
+    status: "pending",
+    visibility: "private",
   });
 
-  const createdProduct = await product.save();
+  supplier.products.push(product._id);
+  await supplier.save();
 
-  if (supplier) {
-    supplier.products.push(createdProduct._id);
-    await supplier.save();
-  }
-
-  res.status(201).json(createdProduct);
+  res.status(201).json({
+    status: "success",
+    message: "Product submitted for admin approval.",
+    data: product,
+  });
 });
 
-
-// ==============================
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Private (Admin/Supplier)
-// ==============================
+/* -------------------- UPDATE PRODUCT -------------------- */
 export const updateProduct = asyncHandler(async (req, res) => {
-  const {
-    name,
-    description,
-    category,
-    price,
-    oldPrice,
-    stock,
-    status: productStatus,
-    brand,
-    color,
-    size,
-    sections,
-    weight,
-    dimensions,
-    shippingRegions,
-    deliveryTime,
-    freeShipping,
-    warehouseLocation,
-    returnPolicy,
-    warranty,
-  } = req.body;
-
   const product = await Product.findById(req.params.id);
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  if (!product) throw new Error("Product not found.");
+
+  if (req.user.role !== "Admin" && product.supplier.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error("You are not authorized to update this product.");
   }
 
-  // 🔹 Section validation
-  const allowedSections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
-  const formattedSections = sections
-    ? (Array.isArray(sections) ? sections : [sections]).filter((s) =>
-        allowedSections.includes(s)
-      )
-    : product.sections;
+  const updates = req.body;
 
-  // 🔹 Update fields
-  product.name = name || product.name;
-  product.description = description || product.description;
-  product.category = category || product.category;
-  product.price = price ?? product.price;
-  product.oldPrice = oldPrice ?? product.oldPrice;
-  product.stock = stock ?? product.stock;
-  product.status = productStatus || product.status;
-  product.brand = brand || product.brand;
-  product.color = color || product.color;
-  product.size = size || product.size;
-  product.sections = formattedSections;
-
-  product.weight = weight ?? product.weight;
-  product.dimensions = dimensions || product.dimensions;
-  product.shippingRegions = shippingRegions
-    ? shippingRegions.split(",")
-    : product.shippingRegions;
-  product.deliveryTime = deliveryTime || product.deliveryTime;
-  product.freeShipping = freeShipping ?? product.freeShipping;
-  product.warehouseLocation = warehouseLocation || product.warehouseLocation;
-  product.returnPolicy = returnPolicy || product.returnPolicy;
-  product.warranty = warranty || product.warranty;
-
-  // 🔹 Image uploads
-  if (req.files?.length > 0) {
-    const uploadResults = await Promise.all(
-      req.files.map((file) => uploadToCloudinary(file.buffer))
-    );
-    product.images = [...product.images, ...uploadResults];
+  if (updates.variants) {
+    try {
+      const parsedVariants = typeof updates.variants === "string" ? JSON.parse(updates.variants) : updates.variants;
+      if (!validateVariants(parsedVariants)) throw new Error("Invalid variant data.");
+      updates.variants = parsedVariants;
+    } catch {
+      throw new Error("Invalid variants format.");
+    }
   }
 
-  const updatedProduct = await product.save();
-  res.json(updatedProduct);
+  if (updates.dimensions && !validateDimensions(updates.dimensions)) throw new Error("Invalid dimensions.");
+
+  if (updates.flashSale) {
+    const { startDate, endDate } = updates.flashSale;
+    if (startDate && endDate && new Date(endDate) <= new Date(startDate))
+      throw new Error("Flash sale endDate must be after startDate.");
+  }
+
+  if (req.files?.length) {
+    const uploadResults = await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)));
+    const newImages = uploadResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
+    updates.images = [...(product.images || []), ...newImages];
+  }
+
+  // Admin approval logic
+  if (req.user.role === "Admin" && updates.status === "approved") {
+    updates.status = "active";
+    updates.visibility = "public";
+  }
+
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value != null) product.set(key, value);
+  });
+
+  const updated = await product.save();
+  res.json({ status: "success", message: "Product updated successfully.", data: updated });
 });
 
-
-
-// ==============================
-// @desc    Get products (all, filtered, paginated, or by slug)
-// @route   GET /api/products
-// @access  Public
-// ==============================
+/* -------------------- GET PRODUCTS -------------------- */
 export const getProducts = asyncHandler(async (req, res) => {
-  const pageSize = Number(req.query.limit) || 10;
+  const pageSize = Number(req.query.limit) || 12;
   const page = Number(req.query.page) || 1;
+  const isAdmin = req.query.admin === "true";
 
-  const { parentSlug, childSlug } = req.params;
+  const filters = {};
+  if (!isAdmin) filters.status = "active";
+  if (req.query.category) filters.category = req.query.category;
+  if (req.query.section) filters.sections = req.query.section;
 
-  // keyword search
-  const keyword = req.query.keyword
-    ? { name: { $regex: req.query.keyword, $options: "i" } }
-    : {};
-
-  let categoryFilter = {};
-
-  if (parentSlug) {
-    const parent = await Category.findOne({ slug: parentSlug, parentCategory: null });
-    if (!parent) {
-      return res.json({ products: [], page: 1, pages: 1, total: 0 });
-    }
-
-    if (childSlug) {
-      const child = await Category.findOne({
-        slug: childSlug,
-        parentCategory: parent._id,
-      });
-      if (!child) {
-        return res.json({ products: [], page: 1, pages: 1, total: 0 });
-      }
-      categoryFilter = { category: child._id };
-    } else {
-      const children = await Category.find({ parentCategory: parent._id });
-      categoryFilter = { category: { $in: children.map((c) => c._id) } };
-    }
-  } else if (req.query.category) {
-    categoryFilter = { category: req.query.category };
-  }
-
-  // price range
-  const minPrice = req.query.minPrice ? Number(req.query.minPrice) : 0;
-  const maxPrice = req.query.maxPrice ? Number(req.query.maxPrice) : Number.MAX_SAFE_INTEGER;
-  const priceFilter = { price: { $gte: minPrice, $lte: maxPrice } };
-
-  // section filter
-  const sectionFilter = req.query.section ? { sections: req.query.section } : {};
-
-  const filter = { ...keyword, ...categoryFilter, ...priceFilter, ...sectionFilter };
-
-  // sorting
-  let sort = {};
-  switch (req.query.sortBy) {
-    case "priceAsc":
-      sort = { price: 1 };
-      break;
-    case "priceDesc":
-      sort = { price: -1 };
-      break;
-    case "newest":
-      sort = { createdAt: -1 };
-      break;
-    case "oldest":
-      sort = { createdAt: 1 };
-      break;
-  }
-
-  const count = await Product.countDocuments(filter);
-
-  const products = await Product.find(filter)
+  const count = await Product.countDocuments(filters);
+  const products = await Product.find(filters)
     .populate("category supplier", "name shopName")
-    .sort(sort)
+    .sort({ createdAt: -1 })
+    .skip(pageSize * (page - 1))
     .limit(pageSize)
-    .skip(pageSize * (page - 1));
+    .lean();
 
   res.json({
-    products,
+    status: "success",
+    total: count,
     page,
     pages: Math.ceil(count / pageSize),
-    total: count,
+    data: products,
   });
 });
 
-// ==============================
-// @desc    Get single product
-// @route   GET /api/products/:id
-// @access  Public
-// ==============================
+/* -------------------- GET SINGLE PRODUCT -------------------- */
 export const getProductById = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id).populate("category supplier");
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  const idOrSlug = req.params.id;
+  let product;
+
+  if (/^[0-9a-fA-F]{24}$/.test(idOrSlug)) {
+    product = await Product.findById(idOrSlug).populate("category supplier", "name shopName").lean();
   }
-  res.json(product);
+  if (!product) {
+    product = await Product.findOne({ "seo.slug": idOrSlug }).populate("category supplier", "name shopName").lean();
+  }
+
+  if (!product) throw new Error("Product not found.");
+  res.json({ status: "success", data: product });
 });
 
-
-
-// ==============================
-// @desc    Delete product
-// @route   DELETE /api/products/:id
-// @access  Private (Admin/Supplier)
-// ==============================
+/* -------------------- DELETE PRODUCT -------------------- */
 export const deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id);
-  if (!product) {
-    res.status(404);
-    throw new Error("Product not found");
+  if (!product) throw new Error("Product not found.");
+
+  if (req.user.role !== "Admin" && product.supplier.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error("You are not authorized to delete this product.");
   }
 
-  await product.deleteOne();
-  res.json({ message: "Product removed" });
+  product.status = "inactive";
+  product.visibility = "hidden";
+  product.deletedAt = new Date();
+  await product.save();
+
+  res.json({ status: "success", message: "Product deactivated successfully." });
 });
 
-// ==============================
-// @desc    Delete product image
-// @route   DELETE /api/products/:productId/images/:publicId
-// @access  Private (Admin/Supplier)
-// ==============================
+/* -------------------- HOMEPAGE PRODUCTS -------------------- */
+export const getHomepageProducts = asyncHandler(async (req, res) => {
+  const sections = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
+  const result = {};
+
+  for (const section of sections) {
+    result[section.toLowerCase()] = await Product.find({ sections: section, status: "active" })
+      .populate("category supplier", "name shopName")
+      .limit(10)
+      .lean();
+  }
+
+  res.json({ status: "success", data: result });
+});
+
+/* -------------------- GET ALL PRODUCTS FOR ADMIN -------------------- */
+export const getAllProductsForAdmin = asyncHandler(async (req, res) => {
+  const pageSize = Number(req.query.limit) || 20;
+  const page = Number(req.query.page) || 1;
+
+  const filters = {};
+  if (req.query.status) filters.status = req.query.status; // pending, active, inactive
+  if (req.query.category) filters.category = req.query.category;
+  if (req.query.supplier) filters.supplier = req.query.supplier;
+
+  const count = await Product.countDocuments(filters);
+  const products = await Product.find(filters)
+    .populate("category supplier", "name shopName")
+    .sort({ createdAt: -1 })
+    .skip(pageSize * (page - 1))
+    .limit(pageSize)
+    .lean();
+
+  res.json({
+    status: "success",
+    total: count,
+    page,
+    pages: Math.ceil(count / pageSize),
+    data: products,
+  });
+});
+
+
 export const deleteProductImage = asyncHandler(async (req, res) => {
   const { productId, publicId } = req.params;
 
@@ -308,50 +291,25 @@ export const deleteProductImage = asyncHandler(async (req, res) => {
     throw new Error("Product not found");
   }
 
-  const image = product.images.find((img) => img.public_id === publicId);
-  if (!image) {
-    res.status(404);
-    throw new Error("Image not found in this product");
+  // Verify ownership (supplier can only delete their own images)
+  if (
+    req.user.role === "Supplier" &&
+    product.supplier.toString() !== req.user._id.toString()
+  ) {
+    res.status(403);
+    throw new Error("You are not authorized to delete this image");
   }
 
-  await deleteFromCloudinary(publicId);
+  // Remove from Cloudinary
+  await cloudinary.uploader.destroy(publicId);
+
+  // Remove from product.images array
   product.images = product.images.filter((img) => img.public_id !== publicId);
   await product.save();
 
-  res.json({ message: "Image deleted successfully", product });
+  res.status(200).json({
+    status: "success",
+    message: "Image removed successfully",
+    data: product.images,
+  });
 });
-
-// ==============================
-// @desc    Homepage products
-// @route   GET /api/products/homepage
-// @access  Public
-// ==============================
-export const getHomepageProducts = asyncHandler(async (req, res) => {
-  // Define the sections with the keys you want in frontend
-  const sectionMap = {
-    flashSales: "FlashSales",
-    deals: "BestDeals",
-    newArrivals: "NewArrivals",
-    topTrending: "TopTrending",
-  };
-
-  const results = {};
-
-  // Fetch products for each section
-  for (const [key, sectionName] of Object.entries(sectionMap)) {
-    const products = await Product.find({
-      sections: sectionName,
-      status: "active",
-    })
-      .limit(10)
-      .populate("category", "name slug") // populate category info
-      .populate("supplier", "shopName"); // optional: populate supplier info
-
-    results[key] = products;
-  }
-
-  res.json(results);
-});
-
-
-

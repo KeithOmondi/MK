@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../redux/store";
 
-import { FaShoppingCart, FaHeart, FaPlus, FaMinus, FaTrash } from "react-icons/fa";
+import { FaShoppingCart, FaHeart } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
 
 import Header from "../components/common/Header";
@@ -15,116 +15,160 @@ import {
   selectProducts,
   selectProductLoading,
   selectProductError,
+  type Product,
+  type ProductVariant,
 } from "../redux/slices/productSlice";
 import {
   selectCategories,
   fetchCategories,
 } from "../redux/slices/categorySlice";
 
+import { addToCart, type CartItem } from "../redux/slices/cartSlice";
 import {
-  addToCart,
-  removeFromCart,
-  updateQuantity,
-  type CartItem,
-} from "../redux/slices/cartSlice";
-import type { Product } from "@/types";
+  addToWishlist,
+  removeFromWishlist,
+  selectWishlistItems,
+} from "../redux/slices/wishlistSlice";
+import { getDisplayPrice } from "../utils/price";
 
 export default function CategoryPage() {
-  const { category, subcategory } = useParams<{ category: string; subcategory?: string }>();
+  const { category, subcategory } = useParams<{
+    category: string;
+    subcategory?: string;
+  }>();
   const dispatch = useDispatch<AppDispatch>();
 
-  // Redux state
-  const products = useSelector(selectProducts);
+  // Safe defaults
+  const products = useSelector(selectProducts) ?? [];
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
-  const categories = useSelector((state: RootState) => selectCategories(state));
-  const cart = useSelector((state: RootState) => state.cart);
+  const categories = useSelector((state: RootState) => selectCategories(state)) ?? [];
+  const wishlist = useSelector(selectWishlistItems) ?? [];
 
-  // Local filters
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
   const [inStockOnly, setInStockOnly] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({});
 
-  // Ensure categories loaded
+  // Load categories if empty
   useEffect(() => {
     if (!categories.length) dispatch(fetchCategories());
   }, [dispatch, categories.length]);
 
-  // Resolve categoryId
+  // Determine category ID
   const categoryId = useMemo(() => {
+    if (!categories.length) return undefined;
+
     if (subcategory) {
       const sub = categories.find((c) => c.slug === subcategory);
       if (sub) return sub._id;
     }
-    return categories.find((c) => c.slug === category)?._id;
+
+    const mainCat = categories.find((c) => c.slug === category);
+    return mainCat?._id;
   }, [categories, category, subcategory]);
 
-  // Fetch products
+  // Fetch products for category
   useEffect(() => {
     if (categoryId) dispatch(fetchProducts({ category: categoryId }));
   }, [dispatch, categoryId]);
 
-  // Filtered products
+  // Filter products
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const brand = p.brand ?? "";
-      const stock = p.stock ?? 0;
-      const price = p.price ?? 0;
+      const variant =
+        selectedVariants[p._id] ?? p.variants?.[0] ?? {
+          _id: `${p._id}-default`,
+          price: p.price ?? 0,
+          stock: 0,
+          color: "Default",
+          size: "",
+          material: "",
+        };
 
-      const matchesBrand = selectedBrands.length === 0 || selectedBrands.includes(brand);
-      const matchesPrice = price >= priceRange[0] && price <= priceRange[1];
-      const matchesStock = !inStockOnly || stock > 0;
+      const matchesBrand =
+        selectedBrands.length === 0 || selectedBrands.includes(brand);
+      const matchesPrice =
+        variant.price >= priceRange[0] && variant.price <= priceRange[1];
+      const matchesStock = !inStockOnly || variant.stock > 0;
 
       return matchesBrand && matchesPrice && matchesStock;
     });
-  }, [products, selectedBrands, priceRange, inStockOnly]);
+  }, [products, selectedBrands, priceRange, inStockOnly, selectedVariants]);
 
+  // Available brands
+  const availableBrands = Array.from(
+    new Set(products.map((p) => p.brand ?? "").filter(Boolean))
+  );
+
+  // Brand toggle
   const toggleBrand = (brand: string) =>
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
     );
 
-  const availableBrands = Array.from(
-    new Set(products.map((p) => p.brand ?? "").filter(Boolean))
-  );
-
-  const handleAddToCart = (product: Product) => {
-  const cartItem = {
-    ...product,
-    quantity: 1,
-    stock: product.stock ?? 0, // ✅ convert null to 0
+  // Variant change
+  const handleVariantChange = (productId: string, variant: ProductVariant) => {
+    setSelectedVariants((prev) => ({ ...prev, [productId]: variant }));
   };
 
-  if (cartItem.stock > 0) {
+  // Add to cart
+  const handleAddToCart = (product: Product) => {
+    const variant =
+      selectedVariants[product._id] ?? product.variants?.[0] ?? {
+        _id: `${product._id}-default`,
+        price: product.price ?? 0,
+        stock: 0,
+        color: "Default",
+        size: "",
+        material: "",
+      };
+
+    if (variant.stock <= 0) {
+      toast.error(`${product.name} is out of stock!`);
+      return;
+    }
+
+    const { price } = getDisplayPrice(product, variant);
+
+    const cartItem: CartItem = {
+      _id: `${product._id}-${variant._id}`,
+      productId: product._id,
+      name: product.name,
+      price,
+      stock: variant.stock,
+      quantity: 1,
+      images: product.images?.length ? [product.images[0]] : [{ url: "/assets/placeholder.png" }],
+      brand: product.brand,
+      variant,
+      supplier: typeof product.supplier === "string" ? product.supplier : product.supplier?.name ?? "Unknown",
+    };
+
     dispatch(addToCart(cartItem));
     toast.success(`${product.name} added to cart!`);
-  } else {
-    toast.error(`${product.name} is out of stock!`);
-  }
-};
-
-
-
-  // Increment/decrement quantity
-  const handleIncrement = (item: CartItem) => {
-    if (item.stock && item.quantity < item.stock) {
-      dispatch(updateQuantity({ id: item._id, quantity: item.quantity + 1 }));
-    } else {
-      toast.error("Cannot exceed stock quantity!");
-    }
   };
 
-  const handleDecrement = (item: CartItem) => {
-    if (item.quantity > 1) {
-      dispatch(updateQuantity({ id: item._id, quantity: item.quantity - 1 }));
-    } else {
-      toast.error("Quantity cannot be less than 1!");
-    }
-  };
+  // Toggle wishlist
+  const handleToggleWishlist = (product: Product) => {
+    const exists = wishlist.some((item) => item.productId === product._id);
+    const variant = selectedVariants[product._id] ?? product.variants?.[0];
+    const price = variant ? getDisplayPrice(product, variant).price : product.price ?? 0;
 
-  const handleRemove = (id: string) => {
-    dispatch(removeFromCart(id));
-    toast.success("Item removed from cart!");
+    if (exists) {
+      dispatch(removeFromWishlist(product._id));
+      toast.error(`${product.name} removed from wishlist`);
+    } else {
+      dispatch(
+        addToWishlist({
+          productId: product._id,
+          name: product.name,
+          price,
+          image: product.images?.[0]?.url || "/assets/placeholder.png",
+        })
+      );
+      toast.success(`${product.name} added to wishlist`);
+    }
   };
 
   return (
@@ -136,6 +180,8 @@ export default function CategoryPage() {
         {/* Sidebar Filters */}
         <aside className="md:col-span-1 bg-white border border-gray-200 rounded-lg shadow-sm p-6 space-y-6 md:sticky md:top-24 h-fit">
           <h2 className="text-xl font-bold text-gray-800 border-b pb-3 mb-3">Filters</h2>
+
+          {/* Brand Filter */}
           <div>
             <h3 className="font-semibold text-gray-700 mb-2">Brand</h3>
             {availableBrands.length === 0 ? (
@@ -159,6 +205,8 @@ export default function CategoryPage() {
               </div>
             )}
           </div>
+
+          {/* Price Filter */}
           <div>
             <h3 className="font-semibold text-gray-700 mb-2">Price Range</h3>
             <div className="flex space-x-3 items-center">
@@ -166,7 +214,7 @@ export default function CategoryPage() {
                 type="number"
                 value={priceRange[0]}
                 onChange={(e) => setPriceRange([+e.target.value, priceRange[1]])}
-                className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500"
                 placeholder="Min"
               />
               <span className="text-gray-500">-</span>
@@ -174,11 +222,13 @@ export default function CategoryPage() {
                 type="number"
                 value={priceRange[1]}
                 onChange={(e) => setPriceRange([priceRange[0], +e.target.value])}
-                className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent transition-colors"
+                className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-2 focus:ring-green-500"
                 placeholder="Max"
               />
             </div>
           </div>
+
+          {/* In-stock filter */}
           <div>
             <label className="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer">
               <input
@@ -192,8 +242,8 @@ export default function CategoryPage() {
           </div>
         </aside>
 
-        {/* Main Products */}
-        <div className="md:col-span-2">
+        {/* Products */}
+        <div className="md:col-span-3">
           <h1 className="text-3xl font-extrabold text-gray-900 capitalize mb-6">
             {subcategory ? `${subcategory.replace("-", " ")} in ${category}` : category}
           </h1>
@@ -205,84 +255,91 @@ export default function CategoryPage() {
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProducts.map((product) => (
-              <div
-                key={product._id}
-                className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transform hover:scale-105 hover:shadow-lg transition-all duration-300 ease-in-out relative group"
-              >
-                <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <button
-                    title="Add to Wishlist"
-                    className="text-gray-600 bg-white p-2 rounded-full shadow-md hover:text-red-500 transition-colors"
-                  >
-                    <FaHeart className="w-4 h-4" />
-                  </button>
-                  <button
-                    title="Add to Cart"
-                    onClick={() => handleAddToCart(product)}
-                    className="text-gray-600 bg-white p-2 rounded-full shadow-md hover:text-green-600 transition-colors"
-                  >
-                    <FaShoppingCart className="w-4 h-4" />
-                  </button>
-                </div>
-                <img
-                  src={product.images?.[0]?.url || "/assets/placeholder.png"}
-                  alt={product.name}
-                  className="w-full h-48 object-contain p-4 bg-gray-50"
-                />
-                <div className="p-4 space-y-1">
-                  <h2 className="font-semibold text-base text-gray-800 truncate">{product.name}</h2>
-                  <p className="text-green-700 font-bold text-lg">Ksh{product.price ?? 0}</p>
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <p>Stock: {product.stock ?? "N/A"}</p>
-                    {product.brand && <p className="font-medium text-gray-400">{product.brand}</p>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+            {filteredProducts.map((product) => {
+              const inWishlist = wishlist.some((item) => item.productId === product._id);
+              const variant = selectedVariants[product._id] ?? product.variants?.[0] ?? {
+                _id: `${product._id}-default`,
+                price: product.price ?? 0,
+                stock: 0,
+                color: "Default",
+                size: "",
+                material: "",
+              };
+              const { price, oldPrice } = getDisplayPrice(product, variant);
 
-        {/* Cart Sidebar */}
-        <aside className="md:col-span-1 bg-white border border-gray-200 rounded-lg shadow-sm p-6 space-y-4 md:sticky md:top-24 h-fit">
-          <h2 className="text-xl font-bold text-gray-800 border-b pb-3 mb-3">Cart</h2>
-          {cart.items.length === 0 ? (
-            <p className="text-gray-500 text-sm">Your cart is empty</p>
-          ) : (
-            <div className="space-y-3">
-              {cart.items.map((item) => (
-                <div key={item._id} className="flex justify-between items-center border-b pb-2">
-                  <div className="flex-1">
-                    <p className="text-gray-700 truncate">{item.name}</p>
-                    <p className="text-green-700 font-semibold">Ksh{item.price}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <button
-                        onClick={() => handleDecrement(item)}
-                        className="p-1 bg-gray-200 rounded hover:bg-gray-300"
+              return (
+                <div
+                  key={product._id}
+                  className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden transform hover:scale-105 hover:shadow-lg transition-all duration-300 ease-in-out relative group"
+                >
+                  {/* Wishlist & Cart buttons */}
+                  <div className="absolute top-3 right-3 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <button
+                      title={inWishlist ? "Remove from Wishlist" : "Add to Wishlist"}
+                      onClick={() => handleToggleWishlist(product)}
+                      className={`p-2 rounded-full shadow-md bg-white transition-colors ${
+                        inWishlist ? "text-red-500" : "text-gray-600 hover:text-red-500"
+                      }`}
+                    >
+                      <FaHeart className="w-4 h-4" />
+                    </button>
+                    <button
+                      title="Add to Cart"
+                      onClick={() => handleAddToCart(product)}
+                      className="text-gray-600 bg-white p-2 rounded-full shadow-md hover:text-green-600 transition-colors"
+                    >
+                      <FaShoppingCart className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Product image */}
+                  <img
+                    src={product.images?.[0]?.url || "/assets/placeholder.png"}
+                    alt={product.name}
+                    className="w-full h-48 object-contain p-4 bg-white"
+                  />
+
+                  {/* Product info */}
+                  <div className="p-4 space-y-1">
+                    <h2 className="font-semibold text-base text-gray-800 truncate">{product.name}</h2>
+
+                    {/* Variant selector */}
+                    {product.variants && product.variants.length > 1 && (
+                      <select
+                        value={variant._id}
+                        onChange={(e) => {
+                          const selected = product.variants?.find((v) => v._id === e.target.value);
+                          if (selected) handleVariantChange(product._id, selected);
+                        }}
+                        className="border border-gray-300 rounded-md p-1 text-sm w-full"
                       >
-                        <FaMinus size={12} />
-                      </button>
-                      <span>{item.quantity}</span>
-                      <button
-                        onClick={() => handleIncrement(item)}
-                        className="p-1 bg-gray-200 rounded hover:bg-gray-300"
-                      >
-                        <FaPlus size={12} />
-                      </button>
-                      <button
-                        onClick={() => handleRemove(item._id)}
-                        className="ml-2 text-red-500 hover:text-red-700"
-                      >
-                        <FaTrash size={14} />
-                      </button>
+                        {product.variants.map((v) => (
+                          <option key={v._id} value={v._id}>
+                            {v.color} / {v.size} / {v.material} - Ksh {v.price} ({v.stock} in stock)
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    <p className="text-green-700 font-bold text-lg">
+                      Ksh {price.toFixed(2)}
+                      {oldPrice && (
+                        <span className="line-through text-gray-400 text-sm ml-2">
+                          Ksh {oldPrice.toFixed(2)}
+                        </span>
+                      )}
+                    </p>
+
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <p>Stock: {variant.stock}</p>
+                      {product.brand && <p className="font-medium text-gray-400">{product.brand}</p>}
                     </div>
                   </div>
                 </div>
-              ))}
-              <p className="font-bold text-gray-800">Total: Ksh{cart.totalAmount}</p>
-            </div>
-          )}
-        </aside>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       <Footer />

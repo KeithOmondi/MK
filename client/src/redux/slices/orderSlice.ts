@@ -17,6 +17,7 @@ export interface OrderItem {
   quantity: number;
   price: number;
   escrowStatus?: "Held" | "Released" | "Refunded";
+  _id: string; // ✅ Add this line
 }
 
 export interface DeliveryDetails {
@@ -245,7 +246,7 @@ export const updateOrderStatus = createAsyncThunk<
   "orders/updateOrderStatus",
   async ({ orderId, status }, { rejectWithValue }) => {
     try {
-      const { data } = await api.put(`/orders/admin/${orderId}/status`, { status });
+      const { data } = await api.put(`/orders/update/${orderId}/status`, { status });
       return data.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);

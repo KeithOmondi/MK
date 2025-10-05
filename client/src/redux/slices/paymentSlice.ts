@@ -1,5 +1,4 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
-import { createSelector } from "@reduxjs/toolkit";
+import { createSlice, createAsyncThunk, type PayloadAction, createSelector } from "@reduxjs/toolkit";
 import api from "../../api/axios";
 import type { RootState } from "../store";
 
@@ -11,6 +10,12 @@ interface PendingPayment {
   phoneNumber: string;
   status: "pending" | "paid" | "failed";
   message?: string;
+}
+
+interface PaymentMethod {
+  _id: string;
+  type: string;     // e.g. "Card", "M-Pesa", "PayPal"
+  details: string;  // e.g. "**** **** **** 1234"
 }
 
 interface PaymentStatusResponse {
@@ -29,6 +34,7 @@ interface PaymentState {
   message: string | null;
   pendingPayments: PendingPayment[];
   lastStatus?: PaymentStatusResponse;
+  methods: PaymentMethod[];   // ✅ saved payment methods
 }
 
 interface MpesaPaymentPayload {
@@ -46,12 +52,12 @@ const initialState: PaymentState = {
   message: null,
   pendingPayments: [],
   lastStatus: undefined,
+  methods: [],
 };
 
 /* ==========================
-   Thunks
+   Thunks - M-Pesa
 ========================== */
-// initiate M-Pesa (needs only orderId + phoneNumber)
 export const initiateMpesaPayment = createAsyncThunk<
   { message: string; orderId: string; phoneNumber: string },
   MpesaPaymentPayload,
@@ -60,20 +66,14 @@ export const initiateMpesaPayment = createAsyncThunk<
   "payment/initiateMpesa",
   async ({ orderId, phoneNumber }, { rejectWithValue }) => {
     try {
-      const { data } = await api.post("/payments/mpesa/pay", {
-        orderId,
-        phoneNumber,
-      });
-
+      const { data } = await api.post("/payments/mpesa/pay", { orderId, phoneNumber });
       return {
         message: data.message || "Please complete your order by entering your M-Pesa PIN",
         orderId,
         phoneNumber,
       };
     } catch (err: any) {
-      return rejectWithValue(
-        err.response?.data?.message || err.message || "Failed to initiate payment"
-      );
+      return rejectWithValue(err.response?.data?.message || err.message || "Failed to initiate payment");
     }
   }
 );
@@ -96,9 +96,46 @@ export const fetchPaymentStatus = createAsyncThunk<
         totalAmount: data.totalAmount,
       };
     } catch (err: any) {
-      return rejectWithValue(
-        err.response?.data?.message || err.message || "Failed to fetch status"
-      );
+      return rejectWithValue(err.response?.data?.message || err.message || "Failed to fetch status");
+    }
+  }
+);
+
+/* ==========================
+   Thunks - Payment Methods
+========================== */
+export const fetchPayments = createAsyncThunk<PaymentMethod[], void, { rejectValue: string }>(
+  "payments/fetchAll",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get("/payments");
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || "Failed to fetch payments");
+    }
+  }
+);
+
+export const addPayment = createAsyncThunk<PaymentMethod, { type: string; details: string }, { rejectValue: string }>(
+  "payments/add",
+  async (payment, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post("/payments", payment);
+      return data.data;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || "Failed to add payment");
+    }
+  }
+);
+
+export const deletePayment = createAsyncThunk<string, string, { rejectValue: string }>(
+  "payments/delete",
+  async (id, { rejectWithValue }) => {
+    try {
+      await api.delete(`/payments/${id}`);
+      return id;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data?.message || "Failed to delete payment");
     }
   }
 );
@@ -124,6 +161,7 @@ const paymentSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    /* Mpesa */
     builder
       .addCase(initiateMpesaPayment.pending, (state) => {
         state.loading = true;
@@ -177,6 +215,27 @@ const paymentSlice = createSlice({
       .addCase(fetchPaymentStatus.rejected, (state, action) => {
         state.error = action.payload as string;
       });
+
+    /* Saved Payment Methods */
+    builder
+      .addCase(fetchPayments.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchPayments.fulfilled, (state, action: PayloadAction<PaymentMethod[]>) => {
+        state.loading = false;
+        state.methods = action.payload;
+      })
+      .addCase(fetchPayments.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload || "Failed to fetch payments";
+      })
+      .addCase(addPayment.fulfilled, (state, action: PayloadAction<PaymentMethod>) => {
+        state.methods.unshift(action.payload);
+      })
+      .addCase(deletePayment.fulfilled, (state, action: PayloadAction<string>) => {
+        state.methods = state.methods.filter((p) => p._id !== action.payload);
+      });
   },
 });
 
@@ -192,8 +251,9 @@ export const selectPaymentSuccess = (state: RootState) => state.payment.success;
 export const selectPaymentMessage = (state: RootState) => state.payment.message;
 export const selectPendingPayments = (state: RootState) => state.payment.pendingPayments;
 export const selectLastPaymentStatus = (state: RootState) => state.payment.lastStatus;
+export const selectPaymentMethods = (state: RootState) => state.payment.methods;
 
-// Memoized selector to avoid rerender warnings
+// Memoized selector
 export const makeSelectPaymentByOrderId = (orderId: string) =>
   createSelector(
     (state: RootState) => state.payment.pendingPayments,

@@ -35,7 +35,7 @@ export const fetchRecentlyViewed = createAsyncThunk<
   { rejectValue: string }
 >("recentlyViewed/fetch", async (_, { rejectWithValue }) => {
   try {
-    const { data } = await api.get("/recently-viewed");
+    const { data } = await api.get("/recently-viewed/get");
     return data; // expects backend to return an array of products
   } catch (err: any) {
     return rejectWithValue(err.response?.data?.message || "Failed to fetch recently viewed");

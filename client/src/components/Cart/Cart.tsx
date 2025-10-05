@@ -112,7 +112,7 @@ export default function Cart() {
               </p>
               <p className="flex justify-between font-semibold text-lg mb-4">
                 <span>Total:</span>
-                <span>Ksh{totalAmount.toLocaleString()}</span>
+                <span>Ksh {totalAmount.toLocaleString()}</span>
               </p>
 
               <button

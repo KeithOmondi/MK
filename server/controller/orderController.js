@@ -159,23 +159,44 @@ export const getOrderById = asyncHandler(async (req, res) => {
 ======================================================= */
 export const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
-  const allowed = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
 
+  // Allowed statuses
+  const allowedStatuses = ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"];
+
+  // Validate status
+  if (!status || !allowedStatuses.includes(status)) {
+    return res.status(400).json({ success: false, message: "Invalid or missing status value" });
+  }
+
+  // Fetch order
   const order = await Order.findById(req.params.id);
-  if (!order) throw new Error("Order not found");
-  if (status && !allowed.includes(status)) throw new Error("Invalid status value");
+  if (!order) {
+    return res.status(404).json({ success: false, message: "Order not found" });
+  }
 
+  // Check user authorization
   let isSupplier = false;
   if (req.user.role === "Supplier") {
     const supplierDoc = await Supplier.findOne({ user: req.user._id });
-    isSupplier = supplierDoc && order.supplier.toString() === supplierDoc._id.toString();
+    if (!supplierDoc) {
+      return res.status(403).json({ success: false, message: "Supplier record not found" });
+    }
+    isSupplier = order.supplier?.toString() === supplierDoc._id.toString();
   }
-  if (!isSupplier && req.user.role !== "Admin") throw new Error("Not authorized");
 
-  order.status = status || order.status;
-  const updated = await order.save();
+  if (!isSupplier && req.user.role !== "Admin") {
+    return res.status(403).json({ success: false, message: "Not authorized to update this order" });
+  }
 
-  res.json({ success: true, message: "Order status updated", data: updated });
+  // Update status
+  order.status = status;
+  const updatedOrder = await order.save();
+
+  return res.status(200).json({
+    success: true,
+    message: "Order status updated successfully",
+    data: updatedOrder,
+  });
 });
 
 /* =======================================================

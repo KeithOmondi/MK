@@ -1,328 +1,353 @@
 // src/pages/ProductPage.tsx
-import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
+import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Star, ShoppingCart, Zap, Package, ShieldCheck } from "lucide-react";
-import toast, { Toaster } from "react-hot-toast";
-
+import { ShoppingCart, Star, User } from "lucide-react";
+import { toast } from "react-toastify";
 import {
   fetchProductById,
   selectProduct,
   selectProductLoading,
   selectProductError,
+  type Product,
+  type ProductVariant,
 } from "../redux/slices/productSlice";
-
 import { addToCart } from "../redux/slices/cartSlice";
 import {
   getReviewsByProduct,
   selectReviewsByProduct,
-  addReview as addReviewSlice,
   selectReviewLoading,
 } from "../redux/slices/reviewSlice";
-
 import type { AppDispatch, RootState } from "../redux/store";
-import type { Review as ReviewSliceType } from "../redux/slices/reviewSlice";
-
 import Header from "../components/common/Header";
 import Footer from "../components/common/Footer";
 
-// Theme colors
-const PRIMARY_COLOR = "indigo-600";
-const ACCENT_COLOR = "orange-500";
+/* ===============================
+   Helper Functions
+=============================== */
+const createSafeVariant = (
+  variant: Partial<ProductVariant> | undefined,
+  product: Product,
+  isDefault: boolean = false
+): ProductVariant => ({
+  _id:
+    variant?._id ??
+    (isDefault
+      ? `${product._id}-default-variant`
+      : `${product._id}-variant-fallback`),
+  price: variant?.price ?? product.price ?? 0,
+  stock: variant?.stock ?? product.stock ?? 0,
+  color: variant?.color ?? "Default",
+  size: variant?.size ?? "",
+  material: variant?.material ?? "",
+});
 
-// ------------------------ StarRating Component ------------------------
-const StarRating: React.FC<{
-  rating: number;
-  setRating?: (r: number) => void;
-  size?: string;
-  readOnly?: boolean;
-}> = ({ rating, setRating, size = "text-xl", readOnly = false }) => (
-  <div className="flex items-center gap-1">
-    {[1, 2, 3, 4, 5].map((star) => (
-      <button
-        key={star}
-        type="button"
-        onClick={() => setRating && !readOnly && setRating(star)}
-        className={`${size} ${star <= rating ? "text-yellow-500" : "text-gray-300 hover:text-yellow-400"} ${
-          readOnly ? "cursor-default" : "cursor-pointer"
-        }`}
-        disabled={readOnly}
-        aria-label={`Rate ${star} stars`}
-      >
-        ★
-      </button>
-    ))}
-  </div>
-);
+const calculateAverageRating = (reviews: any[]) => {
+  if (!reviews.length) return 0;
+  const total = reviews.reduce((sum, r) => sum + (r.rating || 0), 0);
+  return total / reviews.length;
+};
 
-// ------------------------ ProductPage Component ------------------------
-const ProductPage: React.FC = () => {
+/* ===============================
+   Main Component
+=============================== */
+const ProductPage = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
 
   const product = useSelector(selectProduct);
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
 
-  const reviews = useSelector((state: RootState) => selectReviewsByProduct(id || "")(state));
+  const reviews = useSelector((state: RootState) =>
+    selectReviewsByProduct(id || "")(state)
+  );
   const reviewsLoading = useSelector(selectReviewLoading);
 
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string>("");
+  const [selectedVariant, setSelectedVariant] =
+    useState<ProductVariant | null>(null);
   const [quantity, setQuantity] = useState<number>(1);
-  const [reviewState, setReviewState] = useState<{ rating: number; comment: string }>({
-    rating: 0,
-    comment: "",
-  });
 
-  const avgRating = useMemo(() => {
-    if (!reviews || reviews.length === 0) return 0;
-    return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
-  }, [reviews]);
+  const averageRating = useMemo(
+    () => calculateAverageRating(reviews),
+    [reviews]
+  );
 
-  const isInStock = !!(product?.stock && product.stock > 0);
-
-  // ------------------------ Fetch product & reviews ------------------------
   useEffect(() => {
     if (id) {
       dispatch(fetchProductById(id));
       dispatch(getReviewsByProduct(id));
     }
-  }, [dispatch, id]);
+  }, [id, dispatch]);
 
   useEffect(() => {
-    if (product?.images?.[0]?.url) setSelectedImage(product.images[0].url);
-  }, [product]);
-
-  // ------------------------ Handlers ------------------------
-  const handleAddToCart = () => {
     if (!product) return;
-    dispatch(
-      addToCart({
-        _id: product._id,
-        name: product.name,
-        price: product.price,
-        supplier: product.supplier || "Unknown",
-        images: product.images,
-        stock: product.stock ?? 0,
-        quantity,
-      })
-    );
-    toast.success(`Added ${quantity} × ${product.name} to cart`);
-  };
+    if (product.images?.length && !selectedImage)
+      setSelectedImage(product.images[0].url);
+    if (!selectedVariant)
+      setSelectedVariant(createSafeVariant(product.variants?.[0], product, true));
+  }, [product, selectedImage, selectedVariant]);
 
-  const handleBuyNow = () => {
-    handleAddToCart();
-    setTimeout(() => navigate("/cart"), 500);
-  };
+  const handleVariantChange = useCallback(
+    (variant: ProductVariant) => {
+      if (!product) return;
+      setSelectedVariant(createSafeVariant(variant, product));
+      setQuantity(1);
+    },
+    [product]
+  );
 
-  const handleReviewSubmit = () => {
-    if (!id || !reviewState.rating || !reviewState.comment.trim()) {
-      toast.error("Please provide a rating and comment.");
+  const handleAddToCart = useCallback(() => {
+    if (!product || !selectedVariant) return;
+    if (quantity > selectedVariant.stock) {
+      toast.error("Not enough stock available");
       return;
     }
 
     dispatch(
-      addReviewSlice({
-        productId: id,
-        orderId: "N/A",
-        rating: reviewState.rating,
-        comment: reviewState.comment.trim(),
+      addToCart({
+        _id: `${product._id}-${selectedVariant._id}`,
+        productId: product._id,
+        name: product.name,
+        images:
+          product.images?.map((img) => ({
+            url: img.url,
+            public_id: img.public_id,
+          })) ?? [],
+        variant: selectedVariant,
+        quantity,
+        price: selectedVariant.price,
+        stock: selectedVariant.stock,
+        supplier:
+          typeof product.supplier === "string"
+            ? product.supplier
+            : product.supplier?._id,
       })
-    )
-      .unwrap()
-      .then(() => {
-        toast.success("Review submitted!");
-        setReviewState({ rating: 0, comment: "" });
-      })
-      .catch((err) => toast.error(err));
-  };
+    );
+    toast.success(`${product.name} added to cart`);
+  }, [product, selectedVariant, quantity, dispatch]);
 
-  // ------------------------ Render ------------------------
-  if (loading)
-    return <p className="text-center text-gray-500 py-24 text-xl">Loading product details...</p>;
+  const stockDisplay = useMemo(() => {
+    const stock = selectedVariant?.stock ?? 0;
+    if (stock > 10) return <span className="text-green-600">In Stock</span>;
+    if (stock > 0)
+      return (
+        <span className="text-orange-500">Low Stock: {stock} remaining</span>
+      );
+    return <span className="text-red-600">Out of Stock</span>;
+  }, [selectedVariant]);
+
+  if (loading && !product)
+    return (
+      <p className="text-center mt-20 text-xl font-medium">
+        Loading product details...
+      </p>
+    );
   if (error)
-    return <p className="text-center text-red-600 py-24 text-xl font-medium">Error: {error}</p>;
+    return (
+      <p className="text-center mt-20 text-xl text-red-600 font-medium">
+        Error: {error}
+      </p>
+    );
   if (!product)
-    return <p className="text-center text-gray-500 py-24 text-xl">Product not found.</p>;
+    return (
+      <p className="text-center mt-20 text-xl font-medium">Product not found</p>
+    );
 
   return (
     <>
       <Header />
-      <Toaster position="top-right" />
 
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
-        {/* Product Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
-          {/* Images */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-lg bg-white">
-              <img
-                src={selectedImage || "/placeholder.png"}
-                alt={product.name}
-                className="w-full h-[450px] md:h-[600px] object-contain p-4"
-              />
-            </div>
-            <div className="flex gap-4 p-2 overflow-x-auto bg-white rounded-xl border border-gray-100">
+      <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+        {/* --- Product Overview --- */}
+        <div className="grid md:grid-cols-2 gap-10">
+          {/* --- Images --- */}
+          <div>
+            <img
+              src={selectedImage}
+              alt={product.name}
+              className="w-full max-h-[500px] object-contain rounded-2xl shadow-lg border border-gray-100"
+            />
+            <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
               {product.images?.map((img, idx) => (
                 <img
                   key={idx}
                   src={img.url}
-                  alt={`thumb-${idx}`}
+                  alt={`${product.name} thumbnail ${idx + 1}`}
                   onClick={() => setSelectedImage(img.url)}
-                  className={`w-24 h-24 object-cover rounded-lg border-2 cursor-pointer transition transform hover:scale-[1.02] ${
+                  className={`w-20 h-20 object-cover rounded-xl cursor-pointer border-2 transition-all duration-200 ${
                     selectedImage === img.url
-                      ? `border-${PRIMARY_COLOR} ring-2 ring-${PRIMARY_COLOR}/50 shadow-md`
-                      : "border-gray-200 hover:border-gray-400"
+                      ? "border-blue-600 shadow-md"
+                      : "border-gray-200 hover:border-blue-300"
                   }`}
                 />
               ))}
             </div>
           </div>
 
-          {/* Info & Actions */}
-          <div className="lg:col-span-1 lg:sticky lg:top-8 self-start space-y-6">
-            <div className="p-4 sm:p-6 border border-gray-200 rounded-xl bg-white shadow-xl">
-              <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 mb-2">{product.name}</h1>
+          {/* --- Details --- */}
+          <div className="flex flex-col gap-5">
+            <h1 className="text-3xl font-bold text-gray-900">
+              {product.name}
+            </h1>
 
-              {/* Rating */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex text-yellow-500">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      size={20}
-                      fill={i < Math.round(avgRating) ? "currentColor" : "none"}
-                      strokeWidth={1.5}
-                    />
+            {/* Rating */}
+            <div className="flex items-center gap-2 text-yellow-500">
+              {[...Array(5)].map((_, i) => (
+                <Star
+                  key={i}
+                  size={20}
+                  fill={i < Math.round(averageRating) ? "#facc15" : "none"}
+                  className="stroke-2"
+                />
+              ))}
+              <span className="text-sm text-gray-600 font-medium">
+                ({averageRating.toFixed(1)} / {reviews.length} reviews)
+              </span>
+            </div>
+
+            <p className="text-3xl font-extrabold text-blue-600">
+              KSh {selectedVariant?.price?.toLocaleString()}
+            </p>
+
+            {/* Variant Selection */}
+            {product.colors?.length ? (
+              <div>
+                <p className="font-semibold text-gray-700 mb-2">
+                  Available Colors:
+                </p>
+                <div className="flex gap-3 flex-wrap">
+                  {product.colors.map((color) => (
+                    <button
+                      key={color}
+                      onClick={() =>
+                        handleVariantChange({
+                          ...selectedVariant!,
+                          color,
+                        })
+                      }
+                      className={`px-5 py-2 rounded-full border-2 transition-all duration-200 text-sm font-medium ${
+                        selectedVariant?.color === color
+                          ? "border-blue-600 bg-blue-50 text-blue-800 shadow-inner"
+                          : "border-gray-300 hover:border-gray-400 bg-white"
+                      }`}
+                    >
+                      {color}
+                    </button>
                   ))}
                 </div>
-                <span className="text-base font-medium text-gray-700">{avgRating.toFixed(1)}</span>
-                <span className="text-sm text-gray-500">({reviews.length} Reviews)</span>
               </div>
+            ) : null}
 
-              <hr className="my-4" />
-
-              {/* Price & Stock */}
-              <div className="flex items-baseline gap-3">
-                <span className={`text-2xl font-extrabold text-${ACCENT_COLOR}`}>
-                  Ksh {product.price?.toFixed(2) || 0}
-                </span>
-                {product.oldPrice && (
-                  <span className="text-sm text-gray-400 line-through">
-                    Ksh {product.oldPrice.toFixed(2)}
+            {/* Quantity + Stock */}
+            <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <div className="flex items-center gap-4">
+                <p className="font-semibold text-gray-700">Quantity:</p>
+                <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
+                    className="px-4 py-2 bg-white hover:bg-gray-100 transition disabled:opacity-50"
+                  >
+                    -
+                  </button>
+                  <span className="w-12 text-center font-medium bg-white">
+                    {quantity}
                   </span>
-                )}
+                  <button
+                    onClick={() =>
+                      setQuantity((q) =>
+                        q < (selectedVariant?.stock ?? 0) ? q + 1 : q
+                      )
+                    }
+                    disabled={quantity >= (selectedVariant?.stock ?? 0)}
+                    className="px-4 py-2 bg-white hover:bg-gray-100 transition disabled:opacity-50"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-              <p className={`mt-3 font-semibold text-lg ${isInStock ? "text-green-600" : "text-red-600"}`}>
-                {isInStock ? `In Stock (${product.stock} left)` : "Out of Stock"}
+              <p className="text-sm font-medium">Stock Status: {stockDisplay}</p>
+              <p className="text-sm font-medium text-gray-600">
+                VAT: {product.taxPercentage ?? 16}%
               </p>
-
-              {/* Quantity */}
-              {isInStock && (
-                <div className="flex items-center gap-4 mt-5">
-                  <label htmlFor="qty" className="text-lg font-semibold text-gray-700">Qty:</label>
-                  <input
-                    id="qty"
-                    type="number"
-                    min={1}
-                    max={product.stock ?? 1}
-                    value={quantity}
-                    onChange={(e) => setQuantity(Math.min(Number(e.target.value), product.stock ?? 1))}
-                    className={`w-24 border border-gray-300 rounded-lg px-3 py-2 text-center font-medium focus:outline-none focus:ring-2 focus:ring-${PRIMARY_COLOR}`}
-                  />
-                </div>
+              {product.warranty && (
+                <p className="text-sm font-medium text-gray-600">
+                  Warranty: {product.warranty}
+                </p>
               )}
-
-              {/* Actions */}
-              <div className="flex flex-col gap-3 mt-8">
-                <button
-                  onClick={handleAddToCart}
-                  disabled={!isInStock}
-                  className={`flex items-center justify-center gap-3 w-full px-5 py-3 text-lg rounded-xl font-bold transition duration-200 shadow-md ${
-                    isInStock ? `bg-${PRIMARY_COLOR} text-white hover:bg-${PRIMARY_COLOR}/90` : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                >
-                  <ShoppingCart size={22} /> Add to Cart
-                </button>
-                <button
-                  onClick={handleBuyNow}
-                  disabled={!isInStock}
-                  className={`flex items-center justify-center gap-3 w-full px-5 py-3 text-lg rounded-xl font-bold transition duration-200 shadow-md ${
-                    isInStock ? `bg-${ACCENT_COLOR} text-white hover:bg-${ACCENT_COLOR}/90` : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  }`}
-                >
-                  <Zap size={22} /> Buy Now
-                </button>
-              </div>
-
-              {/* Extra Info */}
-              <div className="mt-6 space-y-2 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <Package size={18} className="text-green-500" /> <span>Free shipping & returns.</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ShieldCheck size={18} className={`text-${PRIMARY_COLOR}`} /> <span>Secure payment guaranteed.</span>
-                </div>
-              </div>
             </div>
+
+            {/* Add to Cart */}
+            <button
+              onClick={handleAddToCart}
+              disabled={(selectedVariant?.stock ?? 0) < 1}
+              className="flex items-center justify-center gap-3 bg-blue-600 text-white text-lg font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-blue-700 transition-all duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              <ShoppingCart size={22} />
+              Add to Cart
+            </button>
           </div>
         </div>
 
+        <hr className="my-12 border-gray-200" />
+
         {/* Description */}
-        <div className="mt-12 lg:mt-20">
-          <h2 className="text-3xl font-bold text-gray-900 mb-6 border-b-2 pb-2">Product Description</h2>
-          <p className="text-gray-700 text-lg leading-relaxed whitespace-pre-wrap">{product.description || "No description available."}</p>
+        <div className="mb-12">
+          <h3 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
+            Product Description
+          </h3>
+          <div className="text-gray-600 leading-relaxed whitespace-pre-wrap">
+            {product.description}
+          </div>
         </div>
 
         {/* Reviews */}
-        <div className="mt-12 lg:mt-20">
-          <h2 className="text-3xl font-bold text-gray-900 mb-6 border-b-2 pb-2">
-            Customer Reviews ({reviews.length})
-          </h2>
+        <div>
+          <h3 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
+            Customer Reviews
+          </h3>
 
-          {/* Add Review Form */}
-          <div className="bg-white border border-gray-200 p-4 rounded-xl mb-6">
-            <p className="font-semibold text-gray-700 mb-2">Leave a Review</p>
-            <StarRating
-              rating={reviewState.rating}
-              setRating={(r) => setReviewState((prev) => ({ ...prev, rating: r }))}
-            />
-            <textarea
-              value={reviewState.comment}
-              onChange={(e) => setReviewState((prev) => ({ ...prev, comment: e.target.value }))}
-              placeholder="Share your thoughts..."
-              rows={3}
-              className="w-full border rounded-lg p-3 my-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <button
-              onClick={handleReviewSubmit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Post Review
-            </button>
-          </div>
-
-          {/* Existing Reviews */}
-          {reviewsLoading && <p className="text-gray-500">Loading reviews...</p>}
-          {!reviewsLoading && reviews.length === 0 && <p className="text-gray-500">No reviews yet.</p>}
-          {!reviewsLoading && reviews.length > 0 && (
+          {reviewsLoading ? (
+            <p>Loading reviews...</p>
+          ) : reviews.length > 0 ? (
             <div className="space-y-6">
-              {reviews.map((rev: ReviewSliceType) => (
-                <div key={rev._id} className="border border-gray-200 p-4 rounded-xl bg-white shadow-sm">
+              {reviews.map((r) => (
+                <div
+                  key={r._id}
+                  className="p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm"
+                >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-gray-800">
-                      {typeof rev.userId === "string" ? "Anonymous" : rev.userId.name || rev.userId.email || "Anonymous"}
-                    </span>
-                    <StarRating rating={rev.rating} readOnly size="text-lg" />
+                    <div className="flex items-center gap-2">
+                      <User className="text-gray-400" size={18} />
+                      <span className="font-semibold text-gray-800">
+                        {typeof r.userId === "string"
+                          ? "Anonymous"
+                          : r.userId?.name ?? "Anonymous"}
+                      </span>
+                    </div>
+                    <div className="flex text-yellow-500">
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          size={16}
+                          fill={i < r.rating ? "#facc15" : "none"}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-gray-700">{rev.comment}</p>
-                  <span className="text-gray-400 text-sm mt-1 block">
-                    {rev.createdAt ? new Date(rev.createdAt).toLocaleDateString() : "—"}
-                  </span>
+                  <p className="text-gray-700">{r.comment}</p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {new Date(r.createdAt || "").toLocaleDateString()}
+                  </p>
                 </div>
               ))}
             </div>
+          ) : (
+            <p className="text-gray-500 italic">
+              No reviews yet. Be the first to review this product!
+            </p>
           )}
         </div>
       </div>

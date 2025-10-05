@@ -51,7 +51,7 @@ const SupplierOrderDetails = () => {
         if (order?._id) {
             setIsUpdating(true);
             try {
-                await dispatch(updateOrderStatus({ id: order._id, status: newStatus })).unwrap();
+                await dispatch(updateOrderStatus({ orderId: order._id, status: newStatus })).unwrap();
                 setStatus(newStatus); // Update local status only on success
                 toast.success(`Order status updated to ${newStatus}!`);
             } catch (err) {

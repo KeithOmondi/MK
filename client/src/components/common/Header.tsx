@@ -1,23 +1,34 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+// src/components/Header/Header.tsx
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { ShoppingCart, Search, Heart, Star, User } from "lucide-react";
+import { useSelector } from "react-redux";
 import Sidebar from "./Sidebar";
+import type { RootState } from "@/redux/store";
+import Wishlist from "../Wishlist/Wishlist";
 
-export default function Header() {
+const Header: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [wishlistOpen, setWishlistOpen] = useState(false);
+  const navigate = useNavigate();
 
-  const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
+  // Redux states
+  const cartItems = useSelector((state: RootState) => state.cart.items || []);
+  const wishlistItems = useSelector(
+    (state: RootState) => state.wishlist.items || []
+  );
 
-  const isAuthenticated = false; // 🔒 Replace with Redux/AuthContext
-  const user = { name: "Dennis" }; // Example user
-  const cartCount = 3; // 🔒 Replace with Redux cart state
+  // Simulated user (replace with actual auth)
+  const isAuthenticated = false;
+  const user = { name: "Dennis" };
 
   return (
     <>
+      {/* ====================== HEADER ====================== */}
       <header className="sticky top-0 z-50 w-full bg-[#2D6A4F] text-white shadow-lg">
-        {/* Top Nav */}
+        {/* ===== Top Nav ===== */}
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-          {/* Logo */}
+          {/* ===== Logo ===== */}
           <Link to="/" className="flex shrink-0 items-center gap-2">
             <img
               src="/logo.png"
@@ -29,7 +40,7 @@ export default function Header() {
             </span>
           </Link>
 
-          {/* Search Bar */}
+          {/* ===== Search Bar ===== */}
           <div className="relative hidden flex-grow md:flex">
             <input
               type="text"
@@ -41,34 +52,45 @@ export default function Header() {
             </button>
           </div>
 
-          {/* Right Side Nav (Icons) */}
+          {/* ===== Right Side Nav ===== */}
           <div className="flex shrink-0 items-center gap-6">
-            <Link to="/wishlist" className="relative group">
-              <Heart
-                size={26}
-                className="text-white transition-colors duration-200 group-hover:text-[#FF6B35]"
-              />
-            </Link>
+            {/* Wishlist Button (Drawer Trigger) */}
+           {/* Wishlist Button (Drawer Trigger) */}
+<button
+  onClick={() => setWishlistOpen(true)}
+  className="relative group"
+  aria-label="Wishlist"
+>
+  <Heart
+    size={26}
+    className="text-white transition-colors duration-200 group-hover:text-[#FF6B35]"
+  />
+  {wishlistItems.length > 0 && (
+    <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B35] text-xs font-bold text-white">
+      {wishlistItems.length}
+    </span>
+  )}
+</button>
 
-            <Link to="/favourites" className="relative group">
-              <Star
-                size={26}
-                className="text-white transition-colors duration-200 group-hover:text-[#FF6B35]"
-              />
-            </Link>
 
-            <Link to="/cart" className="relative group">
+            {/* Cart */}
+            <button
+              onClick={() => navigate("/cart")}
+              className="relative group"
+              aria-label="Cart"
+            >
               <ShoppingCart
                 size={26}
                 className="text-white transition-colors duration-200 group-hover:text-[#FF6B35]"
               />
-              {cartCount > 0 && (
+              {cartItems.length > 0 && (
                 <span className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B35] text-xs font-bold text-white">
-                  {cartCount}
+                  {cartItems.length}
                 </span>
               )}
-            </Link>
+            </button>
 
+            {/* User */}
             <Link to={isAuthenticated ? "/account" : "/login"} className="group">
               <User
                 size={26}
@@ -78,12 +100,12 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Bottom Nav */}
+        {/* ===== Bottom Nav ===== */}
         <nav className="border-t border-[#2D6A4F]/70 bg-[#2D6A4F] px-4 py-2 text-sm overflow-x-auto">
           <div className="mx-auto flex max-w-7xl items-center gap-6 text-white/90">
-            {/* All button triggers sidebar */}
+            {/* Sidebar Toggle */}
             <button
-              onClick={toggleSidebar}
+              onClick={() => setSidebarOpen(true)}
               className="flex items-center whitespace-nowrap transition-colors duration-200 hover:text-white"
             >
               <svg
@@ -102,6 +124,7 @@ export default function Header() {
               </svg>
               All
             </button>
+
             <Link to="/deals" className="whitespace-nowrap hover:text-white">
               Today's Deals
             </Link>
@@ -123,18 +146,20 @@ export default function Header() {
             >
               Customer Service
             </Link>
-            <Link
-              to="/community"
-              className="whitespace-nowrap hover:text-white"
-            >
+            <Link to="/community" className="whitespace-nowrap hover:text-white">
               Become a Seller
             </Link>
           </div>
         </nav>
       </header>
 
-      {/* Sidebar component */}
+      {/* ===== Sidebar (Categories) ===== */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      {/* ===== Wishlist Drawer ===== */}
+      <Wishlist open={wishlistOpen} onClose={() => setWishlistOpen(false)} />
     </>
   );
-}
+};
+
+export default Header;

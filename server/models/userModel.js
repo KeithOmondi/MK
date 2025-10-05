@@ -4,6 +4,19 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import validator from "validator";
 
+// ------------------- Address SubSchema -------------------
+const addressSchema = new mongoose.Schema(
+  {
+    street: { type: String, required: true, trim: true },
+    city: { type: String, required: true, trim: true },
+    state: { type: String, required: true, trim: true },
+    postalCode: { type: String, required: true, trim: true },
+    country: { type: String, required: true, trim: true },
+    isDefault: { type: Boolean, default: false }, // ✅ optional default flag
+  },
+  { timestamps: true }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -68,6 +81,9 @@ const userSchema = new mongoose.Schema(
         time: String,
       },
     ],
+
+    // ✅ Embedded Addresses
+    addresses: [addressSchema],
   },
   {
     timestamps: true,
@@ -126,10 +142,8 @@ userSchema.methods.setRefreshToken = function () {
     expiresIn: process.env.JWT_REFRESH_EXPIRE || "7d",
   });
 
-  // Store hashed version in DB
   this.refreshToken = crypto.createHash("sha256").update(refreshToken).digest("hex");
-
-  return refreshToken; // raw token is returned to client only
+  return refreshToken; // raw token returned to client
 };
 
 userSchema.methods.verifyRefreshToken = function (token) {
