@@ -7,21 +7,17 @@ import {
   deleteProduct,
   deleteProductImage,
   getHomepageProducts,
-  getAllProductsForAdmin, // new import
+  getAllProductsForAdmin,
+  getProductsByCategory,
 } from "../controller/productController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-/* ------------------------------------------------------------------
- 🛒 PRODUCT ROUTES (PRODUCTION READY)
--------------------------------------------------------------------*/
-
 /**
- * @route   POST /api/v1/products/create
- * @desc    Supplier creates a new product (awaiting admin review/approval)
- * @access  Supplier only
+ * Supplier creates a product (awaiting admin review)
+ * POST /api/v1/products/create
  */
 router.post(
   "/create",
@@ -32,50 +28,38 @@ router.post(
 );
 
 /**
- * @route   GET /api/v1/products/get
- * @desc    Get all products (supports search, filters & pagination)
- * @access  Public
+ * Public: list products (search, filters, pagination)
+ * GET /api/v1/products/get
  */
 router.get("/get", getProducts);
 
 /**
- * @route   GET /api/v1/products/admin/get
- * @desc    Admin: get all products (pending, active, inactive) with filters
- * @access  Admin only
+ * Admin: list all products with filters
+ * GET /api/v1/products/admin/get
  */
-router.get(
-  "/admin/get",
-  isAuthenticated,
-  isAuthorized("Admin"),
-  getAllProductsForAdmin
-);
+router.get("/admin/get", isAuthenticated, isAuthorized("Admin"), getAllProductsForAdmin);
 
 /**
- * @route   GET /api/v1/products/category/:slugs
- * @desc    Get products by any nested category slugs
- * @access  Public
+ * Get products by category id or slug/name
+ * GET /api/v1/products/category/:id
  */
-router.get("/category/:slugs", getProducts);
+router.get("/category/:id", getProductsByCategory);
 
 /**
- * @route   GET /api/v1/products/homepage
- * @desc    Get homepage featured sections (Flash Sales, Best Deals, etc.)
- * @access  Public
+ * Homepage featured sections
+ * GET /api/v1/products/homepage
  */
 router.get("/homepage", getHomepageProducts);
 
 /**
- * @route   GET /api/v1/products/get/:id
- * @desc    Get a single product by ID or slug
- * @access  Public
+ * Get single product by id or slug
+ * GET /api/v1/products/get/:id
  */
 router.get("/get/:id", getProductById);
 
 /**
- * @route   PUT /api/v1/products/update/:id
- * @desc    Supplier updates product details
- *          Admin can also update to approve or change status
- * @access  Supplier or Admin
+ * Update product (Supplier or Admin)
+ * PUT /api/v1/products/update/:id
  */
 router.put(
   "/update/:id",
@@ -86,21 +70,14 @@ router.put(
 );
 
 /**
- * @route   DELETE /api/v1/products/delete/:id
- * @desc    Admin or Supplier can delete product
- * @access  Supplier (their own) | Admin (any)
+ * Soft-delete: Supplier (their own) or Admin
+ * DELETE /api/v1/products/delete/:id
  */
-router.delete(
-  "/delete/:id",
-  isAuthenticated,
-  isAuthorized("Supplier", "Admin"),
-  deleteProduct
-);
+router.delete("/delete/:id", isAuthenticated, isAuthorized("Supplier", "Admin"), deleteProduct);
 
 /**
- * @route   DELETE /api/v1/products/delete/:productId/images/:publicId
- * @desc    Remove a single image from a product
- * @access  Supplier (their own) | Admin (any)
+ * Delete a single image from a product
+ * DELETE /api/v1/products/delete/:productId/images/:publicId
  */
 router.delete(
   "/delete/:productId/images/:publicId",

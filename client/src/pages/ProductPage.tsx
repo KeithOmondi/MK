@@ -21,6 +21,7 @@ import {
 import type { AppDispatch, RootState } from "../redux/store";
 import Header from "../components/common/Header";
 import Footer from "../components/common/Footer";
+import RelatedProducts from "./RelatedProducts";
 
 /* ===============================
    Helper Functions
@@ -28,19 +29,32 @@ import Footer from "../components/common/Footer";
 const createSafeVariant = (
   variant: Partial<ProductVariant> | undefined,
   product: Product,
-  isDefault: boolean = false
-): ProductVariant => ({
-  _id:
-    variant?._id ??
-    (isDefault
-      ? `${product._id}-default-variant`
-      : `${product._id}-variant-fallback`),
-  price: variant?.price ?? product.price ?? 0,
-  stock: variant?.stock ?? product.stock ?? 0,
-  color: variant?.color ?? "Default",
-  size: variant?.size ?? "",
-  material: variant?.material ?? "",
-});
+  isDefault = false
+): ProductVariant => {
+  const price: number =
+    variant?.price && variant.price > 0
+      ? Number(variant.price)
+      : Number(product.price ?? 0);
+
+  const stock: number =
+    variant?.stock && variant.stock > 0
+      ? Number(variant.stock)
+      : Number(product.stock ?? 0);
+
+  return {
+    _id:
+      variant?._id ??
+      (isDefault
+        ? `${product._id}-default-variant`
+        : `${product._id}-variant-fallback`),
+    price,
+    stock,
+    color: variant?.color ?? "Default",
+    size: variant?.size ?? "",
+    material: variant?.material ?? "",
+  };
+};
+
 
 const calculateAverageRating = (reviews: any[]) => {
   if (!reviews.length) return 0;
@@ -74,6 +88,9 @@ const ProductPage = () => {
     [reviews]
   );
 
+  /* ===============================
+     Fetch Data
+  =============================== */
   useEffect(() => {
     if (id) {
       dispatch(fetchProductById(id));
@@ -89,6 +106,9 @@ const ProductPage = () => {
       setSelectedVariant(createSafeVariant(product.variants?.[0], product, true));
   }, [product, selectedImage, selectedVariant]);
 
+  /* ===============================
+     Handlers
+  =============================== */
   const handleVariantChange = useCallback(
     (variant: ProductVariant) => {
       if (!product) return;
@@ -100,14 +120,16 @@ const ProductPage = () => {
 
   const handleAddToCart = useCallback(() => {
     if (!product || !selectedVariant) return;
-    if (quantity > selectedVariant.stock) {
+
+    const safeVariant = createSafeVariant(selectedVariant, product);
+    if (quantity > safeVariant.stock) {
       toast.error("Not enough stock available");
       return;
     }
 
     dispatch(
       addToCart({
-        _id: `${product._id}-${selectedVariant._id}`,
+        _id: `${product._id}-${safeVariant._id}`,
         productId: product._id,
         name: product.name,
         images:
@@ -115,10 +137,10 @@ const ProductPage = () => {
             url: img.url,
             public_id: img.public_id,
           })) ?? [],
-        variant: selectedVariant,
+        variant: safeVariant,
         quantity,
-        price: selectedVariant.price,
-        stock: selectedVariant.stock,
+        price: safeVariant.price,
+        stock: safeVariant.stock,
         supplier:
           typeof product.supplier === "string"
             ? product.supplier
@@ -138,6 +160,9 @@ const ProductPage = () => {
     return <span className="text-red-600">Out of Stock</span>;
   }, [selectedVariant]);
 
+  /* ===============================
+     Render
+  =============================== */
   if (loading && !product)
     return (
       <p className="text-center mt-20 text-xl font-medium">
@@ -350,6 +375,15 @@ const ProductPage = () => {
             </p>
           )}
         </div>
+
+        <RelatedProducts
+          category={
+            typeof product.category === "string"
+              ? product.category
+              : product.category?.name || ""
+          }
+          currentProductId={product._id}
+        />
       </div>
 
       <Footer />

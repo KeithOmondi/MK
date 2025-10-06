@@ -15,7 +15,7 @@ import { Heart, Percent, ShoppingCart } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import Header from "../components/common/Header";
 import Footer from "../components/common/Footer";
-import { addToCart } from "../redux/slices/cartSlice";
+import { addToCart, type CartItem } from "../redux/slices/cartSlice";
 import {
   addToWishlist,
   removeFromWishlist,
@@ -74,38 +74,40 @@ const Fashion: React.FC = () => {
   }, []);
 
   // Add to cart
-  const handleAddToCart = (product: Product, variant?: ProductVariant) => {
-    const selected = variant || product.variants?.[0];
-    if (!selected) {
-      toast.error("No variant available for this product.");
-      return;
-    }
-    if ((selected.stock ?? 0) <= 0) {
+  const handleAddToCart = (product: Product, selectedVariant?: ProductVariant) => {
+    const price = selectedVariant?.price ?? product.price ?? 0;
+    const stock = selectedVariant?.stock ?? product.stock ?? 0;
+
+    if (stock <= 0) {
       toast.error(`${product.name} is out of stock!`);
       return;
     }
 
-    dispatch(
-      addToCart({
-        _id: product._id,
-        productId: product._id,
-        name: product.name,
-        price: selected.price,
-        stock: selected.stock ?? 0,
-        quantity: 1,
-        images: product.images,
-        brand: product.brand,
-        variant: selected,
-        supplier:
-          typeof product.supplier === "string"
-            ? product.supplier
-            : product.supplier?.shopName ||
-              product.supplier?.name ||
-              "Unknown",
-      })
-    );
+    const cartItem: CartItem = {
+      _id: product._id,
+      productId: product._id,
+      name: product.name,
+      price,
+      stock,
+      quantity: 1,
+      images:
+        product.images?.length && product.images[0]?.url
+          ? product.images.map((img) => ({
+              url: img.url,
+              public_id: img.public_id,
+            }))
+          : [{ url: "/assets/placeholder.png" }],
+      brand: product.brand ?? "Generic",
+      variant: selectedVariant ?? undefined,
+      supplier:
+        typeof product.supplier === "string"
+          ? product.supplier
+          : product.supplier?.shopName ?? product.supplier?.name ?? "Unknown",
+    };
+
+    dispatch(addToCart(cartItem));
     toast.success(`${product.name} added to cart!`);
-  }; // ✅ <— this closing brace was missing
+  };
 
   // Wishlist toggle
   const handleToggleWishlist = (product: Product) => {
@@ -119,7 +121,7 @@ const Fashion: React.FC = () => {
           productId: product._id,
           name: product.name,
           price: product.price ?? 0,
-          image: product.images?.[0]?.url ?? "",
+          image: product.images?.[0]?.url ?? "/assets/placeholder.png",
         })
       );
       toast.success(`${product.name} added to wishlist`);
@@ -145,7 +147,7 @@ const Fashion: React.FC = () => {
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {fashionProducts.map((product) => {
-              const selectedVariant = product.variants?.[0] || null;
+              const selectedVariant = product.variants?.[0] ?? undefined;
               const inWishlist = wishlist.some(
                 (item) => item.productId === product._id
               );
@@ -157,7 +159,7 @@ const Fashion: React.FC = () => {
                         100
                     )
                   : 0;
-              const stock = selectedVariant?.stock ?? 0;
+              const stock = selectedVariant?.stock ?? product.stock ?? 0;
 
               return (
                 <article
@@ -177,7 +179,7 @@ const Fashion: React.FC = () => {
 
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-pink-600 text-xl font-bold">
-                        KSh {selectedVariant?.price?.toLocaleString()}
+                        KSh {selectedVariant?.price?.toLocaleString() ?? 0}
                       </span>
                       {product.oldPrice && (
                         <span className="line-through text-gray-400 text-sm">
@@ -212,9 +214,7 @@ const Fashion: React.FC = () => {
 
                     <div className="flex mt-4 gap-2">
                       <button
-                        onClick={() =>
-                          handleAddToCart(product, selectedVariant!)
-                        }
+                        onClick={() => handleAddToCart(product, selectedVariant)}
                         className="flex-1 flex items-center justify-center gap-2 bg-pink-600 text-white px-4 py-2 rounded-xl hover:bg-pink-700 transition"
                       >
                         <ShoppingCart className="w-5 h-5" />

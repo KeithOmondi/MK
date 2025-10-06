@@ -1,9 +1,9 @@
 // src/pages/Electronics.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../redux/store";
 import {
-  fetchProducts,
+  fetchProductsByCategory,
   selectProducts,
   selectProductLoading,
   selectProductError,
@@ -26,32 +26,29 @@ import {
 const Electronics: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
 
-  const products = useSelector((state: RootState) => selectProducts(state));
-  const loading = useSelector((state: RootState) => selectProductLoading(state));
-  const error = useSelector((state: RootState) => selectProductError(state));
-  const wishlist = useSelector((state: RootState) => selectWishlistItems(state));
+  const products = useSelector(selectProducts);
+  const loading = useSelector(selectProductLoading);
+  const error = useSelector(selectProductError);
+  const wishlist = useSelector(selectWishlistItems);
 
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({});
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, ProductVariant>
+  >({});
 
-  /* -------------------- FETCH PRODUCTS -------------------- */
+  // ⚠️ Replace this with your actual Electronics category ID
+  const ELECTRONICS_CATEGORY_ID = "6700eaa258b...";
+
+  // Fetch Electronics products
   useEffect(() => {
-    dispatch(fetchProducts({ category: "Electronics" }));
-  }, [dispatch]);
+    if (ELECTRONICS_CATEGORY_ID) {
+      dispatch(fetchProductsByCategory(ELECTRONICS_CATEGORY_ID));
+    }
+  }, [dispatch, ELECTRONICS_CATEGORY_ID]);
 
-  /* -------------------- FILTER ELECTRONICS -------------------- */
-const electronicsProducts = useMemo(
-  () =>
-    products.filter((p) => {
-      if (typeof p.category === "string") return false; // skip string category
-      return p.category?.name === "Electronics";
-    }),
-  [products]
-);
-
-
-  /* -------------------- SEO OPTIMIZATION -------------------- */
+  // SEO
   useEffect(() => {
-    document.title = "Electronics - Shop the Latest Electronics Online | MKSTORE";
+    document.title =
+      "Electronics - Shop the Latest Electronics Online | MKSTORE";
 
     const setMeta = (name: string, content: string) => {
       let tag = document.querySelector(`meta[name='${name}']`);
@@ -81,16 +78,17 @@ const electronicsProducts = useMemo(
     canonical.href = window.location.href;
   }, []);
 
-  /* -------------------- HANDLE VARIANT CHANGE -------------------- */
+  // Handle variant selection
   const handleVariantChange = (productId: string, variant: ProductVariant) => {
     setSelectedVariants((prev) => ({ ...prev, [productId]: variant }));
   };
 
-  /* -------------------- ADD TO CART -------------------- */
+  // Add to cart
   const handleAddToCart = (product: Product) => {
     const selectedVariant = selectedVariants[product._id] ?? product.variants?.[0];
-    const availableStock = selectedVariant?.stock ?? 0;
+
     const price = selectedVariant?.price ?? product.price ?? 0;
+    const availableStock = selectedVariant?.stock ?? product.stock ?? 0;
 
     if (availableStock <= 0) {
       toast.error(`${product.name} is out of stock!`);
@@ -108,7 +106,7 @@ const electronicsProducts = useMemo(
         product.images?.length && product.images[0]?.url
           ? [{ url: product.images[0].url, public_id: product.images[0].public_id }]
           : [{ url: "/assets/placeholder.png" }],
-      variant: selectedVariant,
+      variant: selectedVariant ?? undefined,
       supplier:
         typeof product.supplier === "string"
           ? product.supplier
@@ -120,7 +118,7 @@ const electronicsProducts = useMemo(
     toast.success(`${product.name} added to cart!`);
   };
 
-  /* -------------------- TOGGLE WISHLIST -------------------- */
+  // Toggle wishlist
   const handleToggleWishlist = (product: Product) => {
     const exists = wishlist.some((item) => item.productId === product._id);
     const selectedVariant = selectedVariants[product._id] ?? product.variants?.[0];
@@ -142,7 +140,6 @@ const electronicsProducts = useMemo(
     }
   };
 
-  /* -------------------- RENDER -------------------- */
   return (
     <>
       <Toaster position="top-right" />
@@ -154,19 +151,23 @@ const electronicsProducts = useMemo(
 
           {loading && <p className="text-gray-500">Loading products...</p>}
           {error && <p className="text-red-600">{error}</p>}
-          {!loading && electronicsProducts.length === 0 && (
+          {!loading && products.length === 0 && (
             <p className="text-gray-500">No electronics products found.</p>
           )}
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {electronicsProducts.map((product) => {
-              const inWishlist = wishlist.some((item) => item.productId === product._id);
-              const selectedVariant = selectedVariants[product._id] ?? product.variants?.[0];
+            {products.map((product) => {
+              const inWishlist = wishlist.some(
+                (item) => item.productId === product._id
+              );
+              const selectedVariant =
+                selectedVariants[product._id] ?? product.variants?.[0];
+
               const price = selectedVariant?.price ?? product.price ?? 0;
-              const oldPrice = product.oldPrice;
+              const availableStock = selectedVariant?.stock ?? product.stock ?? 0;
+              const oldPrice = product.oldPrice ?? 0;
               const discount =
-                oldPrice && price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0;
-              const availableStock = selectedVariant?.stock ?? 0;
+                oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0;
               const stockColor = availableStock < 10 ? "#dc2626" : "#16a34a";
 
               return (
@@ -185,7 +186,6 @@ const electronicsProducts = useMemo(
                       <p className="text-gray-500 text-sm mt-1">{product.brand}</p>
                     )}
 
-                    {/* Variant Selection */}
                     {product.variants && product.variants.length > 0 && (
                       <div className="mt-2">
                         <label className="text-sm font-medium">Select Variant:</label>
@@ -209,12 +209,11 @@ const electronicsProducts = useMemo(
                       </div>
                     )}
 
-                    {/* Price & Discount */}
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-blue-600 text-xl font-bold">
                         KSh {price.toLocaleString()}
                       </span>
-                      {oldPrice && oldPrice > price && (
+                      {oldPrice > price && (
                         <span className="line-through text-gray-400 text-sm">
                           KSh {oldPrice.toLocaleString()}
                         </span>
@@ -226,7 +225,6 @@ const electronicsProducts = useMemo(
                       )}
                     </div>
 
-                    {/* Stock Indicator */}
                     <div className="mt-3">
                       <div className="w-full bg-gray-200 rounded-full h-2.5">
                         <div
@@ -246,7 +244,6 @@ const electronicsProducts = useMemo(
                       </p>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex mt-4 gap-2">
                       <button
                         onClick={() => handleAddToCart(product)}

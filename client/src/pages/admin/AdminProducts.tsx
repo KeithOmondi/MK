@@ -1,11 +1,11 @@
 // src/pages/admin/AdminProducts.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "../../redux/store";
 import {
-  deleteProduct,
   fetchAdminProducts,
   updateProduct,
+  deleteProduct,
   type Product,
 } from "../../redux/slices/productSlice";
 import {
@@ -14,15 +14,19 @@ import {
   selectCategoryLoading,
   type Category,
 } from "../../redux/slices/categorySlice";
-import { MdDelete, MdEdit, MdCheckCircle } from "react-icons/md";
+import {
+  MdDelete,
+  MdEdit,
+  MdCheckCircle,
+  MdClose,
+  MdInfo,
+} from "react-icons/md";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 
 /* ==============================
-   Reusable UI Components
+   🔘 Reusable IconButton
 ============================== */
-
-// IconButton Component
 const IconButton: React.FC<{
   onClick: () => void;
   icon: React.ReactNode;
@@ -38,8 +42,12 @@ const IconButton: React.FC<{
   </button>
 );
 
-// Status Badge
-const getStatusBadge = (status: "active" | "inactive" | "draft" | "pending") => {
+/* ==============================
+   🏷️ Status Badge Helper
+============================== */
+const getStatusBadge = (
+  status: "active" | "inactive" | "draft" | "pending"
+) => {
   const colors: Record<string, string> = {
     active: "bg-green-100 text-green-700 ring-1 ring-green-300",
     pending: "bg-yellow-100 text-yellow-700 ring-1 ring-yellow-300",
@@ -59,9 +67,8 @@ const getStatusBadge = (status: "active" | "inactive" | "draft" | "pending") => 
 };
 
 /* ==============================
-   Main Component
+   🧠 AdminProducts Page
 ============================== */
-
 const AdminProducts: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
@@ -69,23 +76,32 @@ const AdminProducts: React.FC = () => {
   const { products = [], loading, error } = useSelector(
     (state: RootState) => state.products
   );
-
   const categories = useSelector(selectCategories) ?? [];
   const categoryLoading = useSelector(selectCategoryLoading);
 
-  // Fetch all products & categories on mount
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [searchQuery, setSearchQuery] = useState(""); // 🔍 Search input state
+
+  /* 🔄 Fetch products and categories */
   useEffect(() => {
     dispatch(fetchAdminProducts({ page: 1, limit: 50 }));
     dispatch(fetchCategories());
   }, [dispatch]);
 
-  /* ==============================
-     Handlers
-  ============================== */
+  /* 🔍 Filtered products by SKU or name */
+  const filteredProducts = products.filter((p) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      p.sku?.toLowerCase().includes(query) ||
+      p.name?.toLowerCase().includes(query)
+    );
+  });
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("⚠️ Are you sure you want to delete this product?")) return;
-
+  /* 🗑️ Delete Product */
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
+    if (!window.confirm("⚠️ Are you sure you want to delete this product?"))
+      return;
     try {
       await dispatch(deleteProduct(id)).unwrap();
       toast.success("✅ Product deleted successfully!");
@@ -94,18 +110,24 @@ const AdminProducts: React.FC = () => {
     }
   };
 
-  const handleEdit = (id: string) => navigate(`/admin/products/edit/${id}`);
+  /* ✏️ Edit Product */
+  const handleEdit = (id?: string) => {
+    if (!id) return;
+    navigate(`/admin/products/edit/${id}`);
+  };
 
-  const handleApprove = async (id: string) => {
+  /* ✅ Approve Product */
+  const handleApprove = async (id?: string) => {
+    if (!id) return;
     try {
       await dispatch(updateProduct({ id, payload: { status: "active" } })).unwrap();
       toast.success("✅ Product approved!");
     } catch (err: any) {
-      toast.error(err || "❌ Failed to approve product.");
+      toast.error(err?.message || "❌ Failed to approve product.");
     }
   };
 
-  // Category hierarchy display
+  /* 🗂️ Category Hierarchy Builder */
   const getCategoryHierarchy = (catId: string): string => {
     const category = categories.find((c) => c._id === catId);
     if (!category) return "Uncategorized";
@@ -121,70 +143,97 @@ const AdminProducts: React.FC = () => {
   };
 
   /* ==============================
-     Render
+     🖼️ Render UI
   ============================== */
-
   return (
     <div className="p-4 md:p-8 bg-gray-50 min-h-screen">
       {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
         <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900">
           🛒 Product Inventory
         </h1>
-        <button
-          onClick={() => navigate("/admin/products/new")}
-          className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition flex items-center gap-1"
-        >
-          + Add Product
-        </button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {/* 🔍 Search Bar */}
+          <input
+            type="text"
+            placeholder="Search by SKU or name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg w-full md:w-64 shadow-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <button
+            onClick={() => navigate("/admin/products/new")}
+            className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition"
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
 
       {/* Loading / Error */}
       {loading && <p className="text-gray-600">Loading products...</p>}
       {error && <p className="text-red-600">{error}</p>}
 
-      {/* Table */}
+      {/* Product Table */}
       {!loading && !error && (
         <div className="bg-white shadow-xl rounded-2xl overflow-hidden border border-gray-100">
           <div className="overflow-x-auto">
             <table className="min-w-full table-auto border-collapse">
               <thead className="bg-indigo-600 text-white">
                 <tr>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Image</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Name</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Category</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Price</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Stock</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Status</th>
-                  <th className="px-5 py-3 text-left text-sm font-semibold">Added</th>
-                  <th className="px-5 py-3 text-center text-sm font-semibold">Actions</th>
+                  {[
+                    "Image",
+                    "Name",
+                    "SKU",
+                    "Category",
+                    "Price",
+                    "Stock",
+                    "Status",
+                    "Added",
+                    "Actions",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-5 py-3 text-left text-sm font-semibold"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-
               <tbody className="divide-y divide-gray-100">
-                {products.length === 0 ? (
+                {filteredProducts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-gray-500 italic">
-                      No products found.
+                    <td
+                      colSpan={9}
+                      className="text-center py-10 text-gray-500 italic"
+                    >
+                      No products match your search.
                     </td>
                   </tr>
                 ) : (
-                  products.map((product: Product) => (
-                    <tr key={product._id} className="hover:bg-indigo-50/40">
+                  filteredProducts.map((product) => (
+                    <tr key={product._id ?? ""} className="hover:bg-indigo-50/40">
                       <td className="px-5 py-4">
                         <img
-                          src={product.images?.[0]?.url || "https://via.placeholder.com/60"}
+                          src={
+                            product.images?.[0]?.url ||
+                            "https://via.placeholder.com/60"
+                          }
                           alt={product.name || "Product"}
                           className="w-14 h-14 object-cover rounded-lg border"
-                          onError={(e) =>
-                            ((e.target as HTMLImageElement).src =
-                              "https://via.placeholder.com/60")
-                          }
                         />
                       </td>
 
-                      <td className="px-5 py-4 font-medium text-gray-900 truncate">
+                      <td
+                        className="px-5 py-4 font-medium text-indigo-700 cursor-pointer hover:underline"
+                        onClick={() => setSelectedProduct(product)}
+                      >
                         {product.name ?? "Unnamed Product"}
+                      </td>
+
+                      <td className="px-5 py-4 text-sm text-gray-700 font-mono">
+                        {product.sku || "—"}
                       </td>
 
                       <td className="px-5 py-4 text-sm text-indigo-700">
@@ -213,24 +262,24 @@ const AdminProducts: React.FC = () => {
 
                       <td className="px-5 py-4">
                         {getStatusBadge(
-                          (product.status as "active" | "inactive" | "draft" | "pending") ||
-                            "inactive"
+                          (product.status as
+                            | "active"
+                            | "inactive"
+                            | "draft"
+                            | "pending") || "inactive"
                         )}
                       </td>
 
                       <td className="px-5 py-4 text-sm text-gray-500">
                         {product.createdAt
-                          ? new Date(product.createdAt).toLocaleDateString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })
+                          ? new Date(product.createdAt).toLocaleDateString()
                           : "N/A"}
                       </td>
 
                       <td className="px-5 py-4 flex gap-2 justify-center items-center">
-                        {/* Approve Button (only show if pending or inactive) */}
-                        {["pending", "inactive"].includes(product.status) && (
+                        {["pending", "inactive"].includes(
+                          product.status ?? ""
+                        ) && (
                           <IconButton
                             onClick={() => handleApprove(product._id)}
                             icon={<MdCheckCircle size={20} />}
@@ -238,21 +287,23 @@ const AdminProducts: React.FC = () => {
                             className="text-green-600 bg-green-50 hover:bg-green-100"
                           />
                         )}
-
-                        {/* Edit Button */}
                         <IconButton
                           onClick={() => handleEdit(product._id)}
                           icon={<MdEdit size={20} />}
                           title="Edit Product"
                           className="text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
                         />
-
-                        {/* Delete Button */}
                         <IconButton
                           onClick={() => handleDelete(product._id)}
                           icon={<MdDelete size={20} />}
                           title="Delete Product"
                           className="text-red-600 bg-red-50 hover:bg-red-100"
+                        />
+                        <IconButton
+                          onClick={() => setSelectedProduct(product)}
+                          icon={<MdInfo size={20} />}
+                          title="View Details"
+                          className="text-blue-600 bg-blue-50 hover:bg-blue-100"
                         />
                       </td>
                     </tr>
@@ -260,6 +311,73 @@ const AdminProducts: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* 🧩 Product Details Modal */}
+      {selectedProduct && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 relative">
+            <button
+              onClick={() => setSelectedProduct(null)}
+              className="absolute top-3 right-3 text-gray-600 hover:text-red-600"
+            >
+              <MdClose size={22} />
+            </button>
+
+            <div className="flex gap-5">
+              <img
+                src={
+                  selectedProduct.images?.[0]?.url ||
+                  "https://via.placeholder.com/150"
+                }
+                alt={selectedProduct.name}
+                className="w-40 h-40 object-cover rounded-lg border"
+              />
+
+              <div className="flex flex-col gap-2 flex-grow">
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {selectedProduct.name}
+                </h2>
+                <p className="text-gray-500 text-sm">
+                  SKU: {selectedProduct.sku || "N/A"}
+                </p>
+                <p className="text-lg font-semibold text-green-700">
+                  Ksh {selectedProduct.price?.toLocaleString()}
+                </p>
+                <p>
+                  Stock:{" "}
+                  <span className="font-medium">{selectedProduct.stock}</span>
+                </p>
+                <p>Status: {getStatusBadge(selectedProduct.status as any)}</p>
+
+                {/* ✅ Safe supplier handling */}
+                <p className="font-extrabold">
+                  Shop:{" "}
+                  {typeof selectedProduct.supplier === "object" &&
+                  "shopName" in selectedProduct.supplier
+                    ? selectedProduct.supplier.shopName
+                    : "N/A"}
+                </p>
+
+                <p>
+                  Added:{" "}
+                  {new Date(selectedProduct.createdAt || "").toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            {selectedProduct.description && (
+              <div className="mt-4">
+                <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                  Description
+                </h3>
+                <p className="text-gray-600 text-sm">
+                  {selectedProduct.description}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

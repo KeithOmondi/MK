@@ -20,7 +20,7 @@ const SupplierRoute: React.FC<SupplierRouteProps> = ({ children }) => {
 
   // Not a Supplier
   if (user.role !== "Supplier") {
-    return <Navigate to="/unauthorized" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
