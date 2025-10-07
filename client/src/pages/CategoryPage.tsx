@@ -2,13 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { motion } from "framer-motion";
-import {
-  FaShoppingCart,
-  FaHeart,
-  FaBolt,
-  FaStore,
-} from "react-icons/fa";
+import { FaShoppingCart, FaHeart, FaBolt, FaStore } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
+import { Helmet } from "react-helmet-async";
 
 import Header from "../components/common/Header";
 import Footer from "../components/common/Footer";
@@ -26,10 +22,7 @@ import {
   fetchCategories,
   selectCategories,
 } from "../redux/slices/categorySlice";
-import {
-  addToCart,
-  type CartItem,
-} from "../redux/slices/cartSlice";
+import { addToCart, type CartItem } from "../redux/slices/cartSlice";
 import {
   addToWishlist,
   removeFromWishlist,
@@ -48,24 +41,28 @@ export default function CategoryPage() {
   const products = useSelector(selectProducts) ?? [];
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
-  const categories = useSelector((state: RootState) => selectCategories(state)) ?? [];
+  const categories =
+    useSelector((state: RootState) => selectCategories(state)) ?? [];
   const wishlist = useSelector(selectWishlistItems) ?? [];
 
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({});
+  const [selectedVariants, setSelectedVariants] = useState<
+    Record<string, ProductVariant>
+  >({});
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-
-  /* ─────────────────────────── LOAD DATA ─────────────────────────── */
+  /* ─────────── LOAD DATA ─────────── */
   useEffect(() => {
     if (!categories.length) dispatch(fetchCategories());
   }, [dispatch, categories.length]);
 
   const categoryId = useMemo(() => {
     if (!categories.length) return undefined;
-    const sub = subcategory ? categories.find((c) => c.slug === subcategory) : undefined;
+    const sub = subcategory
+      ? categories.find((c) => c.slug === subcategory)
+      : undefined;
     const main = categories.find((c) => c.slug === category);
     return sub?._id || main?._id;
   }, [categories, category, subcategory]);
@@ -74,7 +71,7 @@ export default function CategoryPage() {
     if (categoryId) dispatch(fetchProducts({ category: categoryId }));
   }, [dispatch, categoryId]);
 
-  /* ─────────────────────────── FILTERING ─────────────────────────── */
+  /* ─────────── FILTERING ─────────── */
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const variant =
@@ -94,7 +91,7 @@ export default function CategoryPage() {
     new Set(products.map((p) => p.brand ?? "").filter(Boolean))
   );
 
-  /* ─────────────────────────── HANDLERS ─────────────────────────── */
+  /* ─────────── HANDLERS ─────────── */
   const toggleBrand = (brand: string) =>
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
@@ -106,8 +103,11 @@ export default function CategoryPage() {
   const handleAddToCart = (product: Product) => {
     const variant =
       selectedVariants[product._id] ??
-      product.variants?.[0] ??
-      { _id: `${product._id}-default`, price: product.price ?? 0, stock: product.stock ?? 0 };
+      product.variants?.[0] ?? {
+        _id: `${product._id}-default`,
+        price: product.price ?? 0,
+        stock: product.stock ?? 0,
+      };
 
     if (variant.stock <= 0) {
       toast.error(`${product.name} is out of stock`);
@@ -161,18 +161,43 @@ export default function CategoryPage() {
     if (error) toast.error(error);
   }, [error]);
 
-  /* ─────────────────────────── RENDER ─────────────────────────── */
+  const pageTitle = subcategory
+    ? `${subcategory.replace("-", " ")} in ${category} | ZenMart`
+    : `${category} | ZenMart`;
+  const pageDescription = `Explore high-quality ${subcategory || category} products at ZenMart. Compare prices, brands, and deals from trusted sellers.`;
+  const canonicalUrl = `https://www.zenmart.com/${category}${
+    subcategory ? `/${subcategory}` : ""
+  }`;
+
+  /* ─────────── RENDER ─────────── */
   return (
     <>
+      <Helmet>
+        <title>{pageTitle}</title>
+        <meta name="description" content={pageDescription} />
+        <meta
+          name="keywords"
+          content={`${category}, ${subcategory || ""}, online shopping, ZenMart, best deals, buy ${category} online`}
+        />
+        <link rel="canonical" href={canonicalUrl} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={canonicalUrl} />
+      </Helmet>
+
       <Toaster position="top-right" />
       <Header />
 
+      {/* ─────────── MAIN SECTION ─────────── */}
       <section className="container mx-auto p-6 md:p-10 grid grid-cols-1 md:grid-cols-4 gap-8">
         {/* SIDEBAR FILTERS */}
         <aside className="md:col-span-1 bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6 md:sticky md:top-24 h-fit">
-          <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Filters</h2>
+          <h2 className="text-xl font-bold text-gray-800 border-b pb-3">
+            Filters
+          </h2>
 
-          {/* Brand */}
+          {/* Brand Filter */}
           <div>
             <h3 className="font-semibold text-gray-700 mb-2">Brand</h3>
             {availableBrands.length === 0 ? (
@@ -197,14 +222,16 @@ export default function CategoryPage() {
             )}
           </div>
 
-          {/* Price */}
+          {/* Price Range */}
           <div>
             <h3 className="font-semibold text-gray-700 mb-2">Price Range</h3>
             <div className="flex space-x-3 items-center">
               <input
                 type="number"
                 value={priceRange[0]}
-                onChange={(e) => setPriceRange([+e.target.value, priceRange[1]])}
+                onChange={(e) =>
+                  setPriceRange([+e.target.value, priceRange[1]])
+                }
                 className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500"
                 placeholder="Min"
               />
@@ -212,7 +239,9 @@ export default function CategoryPage() {
               <input
                 type="number"
                 value={priceRange[1]}
-                onChange={(e) => setPriceRange([priceRange[0], +e.target.value])}
+                onChange={(e) =>
+                  setPriceRange([priceRange[0], +e.target.value])
+                }
                 className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500"
                 placeholder="Max"
               />
@@ -235,11 +264,15 @@ export default function CategoryPage() {
         <div className="md:col-span-3">
           <h1 className="text-3xl font-extrabold text-gray-900 capitalize mb-6 flex items-center gap-2">
             <FaStore className="text-green-600" />
-            {subcategory ? `${subcategory.replace("-", " ")} in ${category}` : category}
+            {subcategory
+              ? `${subcategory.replace("-", " ")} in ${category}`
+              : category}
           </h1>
 
           {loading && (
-            <p className="text-gray-500 text-lg animate-pulse">Loading products...</p>
+            <p className="text-gray-500 text-lg animate-pulse">
+              Loading products...
+            </p>
           )}
           {!loading && filteredProducts.length === 0 && (
             <p className="text-gray-500 text-lg">No products found.</p>
@@ -247,11 +280,16 @@ export default function CategoryPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => {
-              const inWishlist = wishlist.some((w) => w.productId === product._id);
+              const inWishlist = wishlist.some(
+                (w) => w.productId === product._id
+              );
               const variant =
                 selectedVariants[product._id] ??
-                product.variants?.[0] ??
-                { _id: `${product._id}-default`, price: product.price ?? 0, stock: product.stock ?? 0 };
+                product.variants?.[0] ?? {
+                  _id: `${product._id}-default`,
+                  price: product.price ?? 0,
+                  stock: product.stock ?? 0,
+                };
 
               const price = variant.price ?? product.price ?? 0;
               const flashActive = product.flashSale?.isActive;
@@ -273,9 +311,13 @@ export default function CategoryPage() {
                   <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleToggleWishlist(product)}
-                      title={inWishlist ? "Remove from Wishlist" : "Add to Wishlist"}
+                      title={
+                        inWishlist ? "Remove from Wishlist" : "Add to Wishlist"
+                      }
                       className={`p-2 rounded-full bg-white shadow ${
-                        inWishlist ? "text-red-500" : "text-gray-600 hover:text-red-500"
+                        inWishlist
+                          ? "text-red-500"
+                          : "text-gray-600 hover:text-red-500"
                       }`}
                     >
                       <FaHeart size={14} />
@@ -290,12 +332,11 @@ export default function CategoryPage() {
                   </div>
 
                   <img
-  src={product.images?.[0]?.url || "/assets/placeholder.png"}
-  alt={product.name}
-  className="w-full h-48 object-contain bg-gray-50 cursor-pointer"
-  onClick={() => setSelectedProduct(product)} // open modal
-/>
-
+                    src={product.images?.[0]?.url || "/assets/placeholder.png"}
+                    alt={product.name}
+                    className="w-full h-48 object-contain bg-gray-50 cursor-pointer"
+                    onClick={() => setSelectedProduct(product)}
+                  />
 
                   <div className="p-4 space-y-1">
                     <h2 className="font-semibold text-base text-gray-800 truncate">
@@ -334,7 +375,11 @@ export default function CategoryPage() {
 
                     <div className="flex justify-between items-center text-xs text-gray-500 mt-1">
                       <p>SKU: {sku}</p>
-                      <p>{variant.stock > 0 ? `${variant.stock} left` : "Out of stock"}</p>
+                      <p>
+                        {variant.stock > 0
+                          ? `${variant.stock} left`
+                          : "Out of stock"}
+                      </p>
                     </div>
                   </div>
                 </motion.div>
@@ -344,12 +389,11 @@ export default function CategoryPage() {
         </div>
 
         {selectedProduct && (
-  <ProductModal
-    product={selectedProduct}
-    onClose={() => setSelectedProduct(null)}
-  />
-)}
-
+          <ProductModal
+            product={selectedProduct}
+            onClose={() => setSelectedProduct(null)}
+          />
+        )}
       </section>
 
       <Footer />
