@@ -4,37 +4,36 @@ import { ArrowRight } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../redux/store";
 import {
-  fetchHomepageProducts,
-  type Product,
-  type ProductVariant,
-} from "../../redux/slices/productSlice";
+  fetchSectionProducts,
+  selectSectionProducts,
+  selectSectionsLoading,
+  selectSectionsError,
+} from "../../redux/slices/sectionSlice";
 import { getDisplayPrice } from "../../utils/price";
+import type { Product, ProductVariant } from "../../redux/slices/productSlice";
 
 const NewArrivals: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
 
-  const { homepage, loading, error } = useSelector(
-    (state: RootState) => state.products
-  );
-  const newArrivals: Product[] = homepage?.newarrivals ?? [];
+  // ✅ Redux state
+  const sectionProducts = useSelector((state: RootState) => selectSectionProducts(state, "NewArrivals"));
+  const loading = useSelector(selectSectionsLoading);
+  const error = useSelector(selectSectionsError);
 
   useEffect(() => {
-    if (!homepage || newArrivals.length === 0) {
-      dispatch(fetchHomepageProducts());
+    if (!sectionProducts || sectionProducts.length === 0) {
+      dispatch(fetchSectionProducts({ sectionName: "NewArrivals", limit: 8 }));
     }
-  }, [dispatch, homepage, newArrivals.length]);
+  }, [dispatch, sectionProducts.length]);
 
   return (
     <section className="bg-white py-12 px-4 sm:px-8 lg:px-16">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <span role="img" aria-label="sparkles">
-            ✨
-          </span>
+          <span role="img" aria-label="sparkles">✨</span>
           New Arrivals
         </h2>
-
         <Link
           to="/new-arrivals"
           className="flex items-center gap-2 text-blue-600 font-semibold hover:text-blue-800 transition-colors"
@@ -48,23 +47,18 @@ const NewArrivals: React.FC = () => {
         {/* Loading Skeleton */}
         {loading &&
           Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="animate-pulse bg-gray-100 shadow rounded-xl h-56"
-            />
+            <div key={i} className="animate-pulse bg-gray-100 shadow rounded-xl h-56" />
           ))}
 
         {/* Error State */}
         {error && (
           <p className="col-span-full text-center text-red-600 font-medium">
-            {typeof error === "string"
-              ? error
-              : "Failed to load new arrivals. Please try again."}
+            {typeof error === "string" ? error : "Failed to load new arrivals. Please try again."}
           </p>
         )}
 
         {/* Empty State */}
-        {!loading && !error && newArrivals.length === 0 && (
+        {!loading && !error && sectionProducts.length === 0 && (
           <p className="col-span-full text-center text-gray-600">
             No new arrivals right now.
           </p>
@@ -73,7 +67,7 @@ const NewArrivals: React.FC = () => {
         {/* Products */}
         {!loading &&
           !error &&
-          newArrivals.map((product) => {
+          sectionProducts.map((product: Product) => {
             const variant: ProductVariant | undefined = product.variants?.[0];
             const { price, oldPrice } = getDisplayPrice(product, variant);
 
@@ -119,9 +113,7 @@ const NewArrivals: React.FC = () => {
                   {variant?.stock !== undefined && (
                     <p
                       className={`mt-1 text-sm font-medium ${
-                        variant.stock > 0
-                          ? "text-green-600"
-                          : "text-red-600"
+                        variant.stock > 0 ? "text-green-600" : "text-red-600"
                       }`}
                     >
                       {variant.stock > 0

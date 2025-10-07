@@ -27,6 +27,7 @@ import reviewRouter from "./routes/reviewRouter.js"
 import adminRouter from "./routes/adminRouter.js"
 import addressRouter from "./routes/addressRouter.js";
 import offersRouter from "./routes/offersRouter.js"
+import sectionRouter from "./routes/sectionRouter.js"
 
 dotenv.config({ path: "./config/.env" });
 
@@ -74,6 +75,7 @@ app.use("/api/v1/reviews", reviewRouter);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/addresses", addressRouter);
 app.use("/api/v1/offers", offersRouter);
+app.use("/api/v1/sections", sectionRouter);
 
 // ✅ Global error handler
 app.use(errorMiddleware);

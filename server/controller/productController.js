@@ -10,7 +10,12 @@ import {
 
 const ObjectId = mongoose.Types.ObjectId;
 
-const ALLOWED_SECTIONS = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
+const ALLOWED_SECTIONS = [
+  "FlashSales",
+  "BestDeals",
+  "NewArrivals",
+  "TopTrending",
+];
 const MAX_PAGE_SIZE = 100;
 
 /* ---------- helpers ---------- */
@@ -42,35 +47,45 @@ const validateVariants = (variants) =>
       (v.stock == null || (typeof v.stock === "number" && v.stock >= 0))
   );
 
-/* ---------- create product ---------- */
+/* ---------- Safe JSON parse helper ---------- */
+const safeJSON = (value) => {
+  if (!value) return null;
+  try {
+    return typeof value === "string" ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+};
+
+/* ---------- CREATE PRODUCT ---------- */
 export const createProduct = asyncHandler(async (req, res) => {
   const body = req.body || {};
-
-  // Required fields
   const { name, description, category, price } = body;
+
+  /* ---------- Required field validation ---------- */
   if (!name || !description || !category || price == null) {
     res.status(400);
-    throw new Error("Name, description, category and price are required.");
+    throw new Error("Name, description, category, and price are required.");
   }
-
   if (price < 0) {
     res.status(400);
     throw new Error("Price cannot be negative.");
   }
-
   if (!isValidObjectId(category)) {
     res.status(400);
     throw new Error("Invalid category ID.");
   }
 
-  // Supplier verification
-  const supplier = await Supplier.findOne({ user: req.user._id }).select("_id products");
+  /* ---------- Verify supplier ---------- */
+  const supplier = await Supplier.findOne({ user: req.user._id }).select(
+    "_id products"
+  );
   if (!supplier) {
     res.status(403);
     throw new Error("You must register as a supplier first.");
   }
 
-  // Category existence check
+  /* ---------- Validate category ---------- */
   const categoryDoc = await Category.findById(category).select("name _id");
   if (!categoryDoc) {
     res.status(404);
@@ -78,7 +93,7 @@ export const createProduct = asyncHandler(async (req, res) => {
   }
 
   /* ---------- Dimensions ---------- */
-  const dimensionsRaw = parseJSON(body.dimensions);
+  const dimensionsRaw = safeJSON(body.dimensions);
   let dimensions = { length: 0, width: 0, height: 0 };
   if (dimensionsRaw) {
     if (!validateDimensions(dimensionsRaw)) {
@@ -89,41 +104,30 @@ export const createProduct = asyncHandler(async (req, res) => {
   }
 
   /* ---------- Variants ---------- */
-  const variantsRaw = parseJSON(body.variants);
+  const variantsRaw = safeJSON(body.variants);
   let variants = [];
-
   if (Array.isArray(variantsRaw) && variantsRaw.length > 0) {
-    // Only keep valid variants (price/stock > 0)
-    variants = variantsRaw.filter(
+    const validVariants = variantsRaw.filter(
       (v) =>
-        (typeof v.price === "number" && v.price > 0) ||
-        (typeof v.stock === "number" && v.stock > 0)
+        (v.price > 0 && typeof v.price === "number") ||
+        (v.stock > 0 && typeof v.stock === "number")
     );
-
-    if (!validateVariants(variants)) {
+    if (!validateVariants(validVariants)) {
       res.status(400);
       throw new Error("Invalid variants data.");
     }
-  } else {
-    variants = [];
+    variants = validVariants;
   }
 
-  // Base stock value
-  let stockValue =
-    body.stock != null && !isNaN(body.stock) ? Number(body.stock) : 0;
-
-  // Optional: sum stock from variants if they exist
+  /* ---------- Stock ---------- */
+  let stockValue = Number(body.stock) || 0;
   if (variants.length > 0) {
-    const variantTotal = variants.reduce((acc, v) => acc + (v.stock || 0), 0);
-    if (variantTotal > 0) {
-      stockValue = variantTotal;
-    }
+    const variantStock = variants.reduce((acc, v) => acc + (v.stock || 0), 0);
+    if (variantStock > 0) stockValue = variantStock;
   }
 
   /* ---------- Flash Sale ---------- */
-  const flashSale = body.flashSale
-    ? parseJSON(body.flashSale) || body.flashSale
-    : {};
+  const flashSale = safeJSON(body.flashSale) || {};
   if (flashSale?.startDate && flashSale?.endDate) {
     if (new Date(flashSale.endDate) <= new Date(flashSale.startDate)) {
       res.status(400);
@@ -132,86 +136,90 @@ export const createProduct = asyncHandler(async (req, res) => {
   }
 
   /* ---------- Images ---------- */
-  if (!req.files || !req.files.length) {
+  if (!req.files?.length) {
     res.status(400);
-    throw new Error("At least one image is required.");
+    throw new Error("At least one product image is required.");
   }
 
   const uploadResults = await Promise.allSettled(
     req.files.map((f) => uploadToCloudinary(f.buffer))
   );
+
   const successfulUploads = uploadResults
     .filter((r) => r.status === "fulfilled")
     .map((r) => r.value);
 
   if (!successfulUploads.length) {
     res.status(500);
-    throw new Error("Image upload failed.");
+    throw new Error("Image upload failed. Please retry.");
   }
 
-  /* ---------- Normalize sections & shipping regions ---------- */
-  const sectionsInput = parseJSON(body.sections) || body.sections;
-  const sectionsArr = []
-    .concat(Array.isArray(sectionsInput) ? sectionsInput : [sectionsInput])
-    .filter(Boolean)
-    .filter((s) => ALLOWED_SECTIONS.includes(s));
+  /* ---------- Sections ---------- */
+  let sectionsArr = [];
+  try {
+    const parsed = safeJSON(body.sections);
+    if (Array.isArray(parsed)) {
+      sectionsArr = parsed.filter((s) => ALLOWED_SECTIONS.includes(s));
+    } else if (
+      typeof parsed === "string" &&
+      ALLOWED_SECTIONS.includes(parsed)
+    ) {
+      sectionsArr = [parsed];
+    }
+  } catch {
+    sectionsArr = [];
+  }
+  if (sectionsArr.length === 0) {
+    sectionsArr = ["NewArrivals"];
+  }
 
-  const shippingRegions = body.shippingRegions
-    ? String(body.shippingRegions)
-        .split(",")
-        .map((r) => r.trim())
-        .filter(Boolean)
-    : [];
+  /* ---------- Shipping Regions ---------- */
+  const shippingRegions = String(body.shippingRegions || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
 
-  /* ---------- Auto SKU Generation ---------- */
+  /* ---------- SKU Generation ---------- */
   let generatedSKU;
-  if (body.sku && typeof body.sku === "string") {
+  if (typeof body.sku === "string" && body.sku.trim()) {
     generatedSKU = body.sku.trim().toUpperCase();
   } else {
-    const catPrefix = categoryDoc.name
-      ? categoryDoc.name.slice(0, 3).toUpperCase()
-      : "GEN";
+    const catPrefix = categoryDoc.name?.slice(0, 3).toUpperCase() || "GEN";
     const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
     generatedSKU = `MK-${catPrefix}-${dateCode}-${rand}`;
   }
 
-  // Ensure SKU is unique
+  // Ensure unique SKU
   let uniqueSKU = generatedSKU;
-  let exists = await Product.findOne({ sku: uniqueSKU });
-  while (exists) {
+  while (await Product.findOne({ sku: uniqueSKU })) {
     const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
     uniqueSKU = `${generatedSKU}-${rand}`;
-    exists = await Product.findOne({ sku: uniqueSKU });
   }
 
   /* ---------- Payload ---------- */
   const payload = {
     sku: uniqueSKU,
-    name: String(name).trim(),
-    description: String(description).trim(),
+    name: name.trim(),
+    description: description.trim(),
     category,
     supplier: supplier._id,
     price: Number(price),
-    oldPrice: body.oldPrice != null ? Number(body.oldPrice) : null,
-    brand: body.brand ? String(body.brand).trim() : undefined,
+    oldPrice: body.oldPrice ? Number(body.oldPrice) : null,
+    brand: body.brand?.trim(),
     stock: stockValue,
-    weight: body.weight != null ? Number(body.weight) : null,
+    weight: body.weight ? Number(body.weight) : null,
     dimensions,
     images: successfulUploads,
-    sections: sectionsArr.length ? sectionsArr : ["NewArrivals"],
+    sections: sectionsArr,
     shippingRegions,
-    deliveryTime: body.deliveryTime ? String(body.deliveryTime) : undefined,
-    freeShipping: body.freeShipping != null ? Boolean(body.freeShipping) : false,
-    warehouseLocation: body.warehouseLocation
-      ? String(body.warehouseLocation).trim()
-      : undefined,
-    returnPolicy: body.returnPolicy
-      ? String(body.returnPolicy).trim()
-      : undefined,
-    warranty: body.warranty ? String(body.warranty).trim() : undefined,
+    deliveryTime: body.deliveryTime?.trim(),
+    freeShipping: Boolean(body.freeShipping),
+    warehouseLocation: body.warehouseLocation?.trim(),
+    returnPolicy: body.returnPolicy?.trim(),
+    warranty: body.warranty?.trim(),
     flashSale: {
-      isActive: flashSale?.isActive ?? false,
+      isActive: !!flashSale?.isActive,
       discountPercentage: flashSale?.discountPercentage ?? 0,
       startDate: flashSale?.startDate ?? null,
       endDate: flashSale?.endDate ?? null,
@@ -234,8 +242,6 @@ export const createProduct = asyncHandler(async (req, res) => {
     data: product,
   });
 });
-
-
 
 /* ---------- update product ---------- */
 export const updateProduct = asyncHandler(async (req, res) => {

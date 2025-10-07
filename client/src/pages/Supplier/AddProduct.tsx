@@ -1,4 +1,3 @@
-// src/pages/admin/AddProducts.tsx
 import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../../redux/store";
@@ -6,6 +5,8 @@ import { createProduct } from "../../redux/slices/productSlice";
 import { fetchCategories } from "../../redux/slices/categorySlice";
 import { toast } from "react-toastify";
 import { FaPlusCircle, FaTimesCircle, FaImage } from "react-icons/fa";
+import AddSectionModal from "./AddSectionModal";
+import { fetchSectionsList } from "../../redux/slices/sectionSlice";
 
 // ✅ SKU Generator
 const generateSKU = (name: string, categoryName?: string) => {
@@ -44,6 +45,7 @@ const AddProducts: React.FC = () => {
   const [seoDescription, setSeoDescription] = useState("");
   const [seoKeywords, setSeoKeywords] = useState("");
   const [generatedSKU, setGeneratedSKU] = useState("");
+  const [showSectionModal, setShowSectionModal] = useState(false);
 
   useEffect(() => {
     dispatch(fetchCategories());
@@ -100,7 +102,6 @@ const AddProducts: React.FC = () => {
     fd.append("warranty", warranty || "No warranty provided");
     fd.append("taxPercentage", taxPercentage.toString());
     fd.append("colors", JSON.stringify(colors));
-    // Backend will still auto-generate the final unique SKU
     fd.append("sku", generatedSKU || "");
 
     const regions = shippingRegions
@@ -395,7 +396,16 @@ const AddProducts: React.FC = () => {
           </div>
 
           {/* === SECTIONS === */}
-          <h2 className={sectionTitleStyle}>Website Sections 🏷️</h2>
+          <h2 className={sectionTitleStyle}>
+            Website Sections 🏷️
+            <button
+              type="button"
+              onClick={() => setShowSectionModal(true)}
+              className="ml-3 text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-200 transition-all"
+            >
+              + Add New Section
+            </button>
+          </h2>
 
           <div className="lg:col-span-3 flex flex-wrap gap-x-8 gap-y-4">
             {[
@@ -497,24 +507,23 @@ const AddProducts: React.FC = () => {
               <h3 className="font-medium text-gray-700 mb-3">
                 Image Preview ({images.length})
               </h3>
-              <div className="flex flex-wrap gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {images.map((image, index) => (
                   <div
                     key={index}
-                    className="relative w-32 h-32 border rounded-lg overflow-hidden shadow-md"
+                    className="relative bg-gray-100 border rounded-lg overflow-hidden shadow-sm"
                   >
                     <img
                       src={URL.createObjectURL(image)}
-                      alt={`Product ${index + 1}`}
-                      className="w-full h-full object-cover"
+                      alt={`preview-${index}`}
+                      className="w-full h-32 object-cover"
                     />
                     <button
                       type="button"
                       onClick={() => handleImageRemove(index)}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      title="Remove image"
+                      className="absolute top-1 right-1 bg-white/80 rounded-full p-1 hover:bg-red-200"
                     >
-                      <FaTimesCircle className="w-4 h-4" />
+                      <FaTimesCircle className="text-red-600" />
                     </button>
                   </div>
                 ))}
@@ -522,17 +531,26 @@ const AddProducts: React.FC = () => {
             </div>
           )}
 
-          {/* SUBMIT BUTTON */}
-          <div className="lg:col-span-3 text-center pt-8">
+          {/* === SUBMIT BUTTON === */}
+          <div className="lg:col-span-3 mt-10 flex justify-end">
             <button
               type="submit"
-              className="bg-blue-600 text-white py-3 px-10 rounded-full font-bold text-lg shadow-xl hover:bg-blue-700 transition-all duration-300 transform hover:scale-105"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold text-lg shadow-md transition-transform transform hover:scale-105"
             >
-              <FaPlusCircle className="inline mr-2" /> Add Product
+              Save Product
             </button>
           </div>
         </form>
       </div>
+
+      {/* === ADD SECTION MODAL === */}
+      {showSectionModal && (
+        <AddSectionModal
+          isOpen={showSectionModal}
+          onClose={() => setShowSectionModal(false)}
+          onCreated={() => dispatch(fetchSectionsList())}
+        />
+      )}
     </div>
   );
 };
