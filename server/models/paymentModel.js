@@ -1,4 +1,3 @@
-// models/paymentModel.js
 import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
@@ -24,17 +23,30 @@ const paymentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "completed", "failed", "refunded"],
+      enum: [
+        "pending",
+        "completed",
+        "failed",
+        "refunded",
+        "partially_refunded",
+      ],
       default: "pending",
     },
     transactionId: {
-      type: String, // e.g. Mpesa receipt no, Stripe paymentIntent id
+      type: String,
       unique: true,
       sparse: true,
     },
+
+    // 👇 Refund tracking fields
+    refundAmount: { type: Number, default: 0 },
+    refundTransactionId: { type: String },
+    refundReason: { type: String },
+    refundDate: { type: Date },
   },
   { timestamps: true }
 );
 
-const Payment = mongoose.model("Payment", paymentSchema);
+const Payment =
+  mongoose.models.Payment || mongoose.model("Payment", paymentSchema);
 export default Payment;

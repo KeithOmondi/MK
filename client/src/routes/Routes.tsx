@@ -39,9 +39,16 @@ import ForceChangePassword from "../pages/auth/ForceChangePassword";
 import AdminUsers from "../pages/admin/AdminUsers";
 import Profile from "../pages/User/Profile";
 import Addresses from "../pages/User/Addresses";
-import OffersPage from "../pages/User/Offers";
 import UserChat from "../pages/User/UserChat";
 import SupplierChat from "../pages/Supplier/SupplierChat";
+import ReturnsRefundsPage from "../pages/User/RefundsPage";
+import MyCart from "../pages/User/MyCart";
+import Wishlist from "../pages/User/Wishlist";
+import Wallet from "../pages/User/Wallet";
+import Transactions from "../pages/User/Transactions";
+import CouponsRewards from "../pages/User/CouponsRewards";
+import AdminProfilePage from "../pages/admin/AdminProfilePage";
+
 
 // ------------------ USER ROUTES ------------------
 export const userRoutes = [
@@ -72,12 +79,37 @@ export const userRoutes = [
   ) },
   { path: "/user/coupons", element: (
     <UserLayout>
-      <OffersPage />
+      <CouponsRewards />
     </UserLayout>
   ) },
   { path: "/user/support", element: (
     <UserLayout>
       <UserChat />
+    </UserLayout>
+  ) },
+  { path: "/user/returns", element: (
+    <UserLayout>
+      <ReturnsRefundsPage />
+    </UserLayout>
+  ) },
+  { path: "/user/cart", element: (
+    <UserLayout>
+      <MyCart />
+    </UserLayout>
+  ) },
+  { path: "/user/wishlist", element: (
+    <UserLayout>
+      <Wishlist />
+    </UserLayout>
+  ) },
+  { path: "/user/wallet", element: (
+    <UserLayout>
+      <Wallet />
+    </UserLayout>
+  ) },
+  { path: "/user/transactions", element: (
+    <UserLayout>
+      <Transactions />
     </UserLayout>
   ) },
   // ✅ Sensitive routes WITHOUT UserLayout
@@ -126,6 +158,14 @@ export const adminRoutes = [
         element: (
             <AdminLayout>
                 <AdminUsers />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/profile",
+        element: (
+            <AdminLayout>
+                <AdminProfilePage />
             </AdminLayout>
         )
     },

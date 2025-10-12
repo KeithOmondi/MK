@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import slugify from "slugify";
-
 const { Schema } = mongoose;
 
+/* ---------- Subschemas ---------- */
 const imageSchema = new Schema(
   {
     url: { type: String, required: true, trim: true },
@@ -17,8 +17,8 @@ const variantSchema = new Schema(
     color: { type: String, trim: true },
     size: { type: String, trim: true },
     material: { type: String, trim: true },
-    stock: { type: Number, min: 0, default: null },
-    price: { type: Number, min: 0, default: null },
+    stock: { type: Number, min: 0, default: 0 },
+    price: { type: Number, min: 0, default: 0 },
     sku: { type: String, trim: true },
     image: { type: String, trim: true },
   },
@@ -41,9 +41,9 @@ const seoSchema = new Schema(
   { _id: false }
 );
 
+/* ---------- Main Product Schema ---------- */
 const productSchema = new Schema(
   {
-    // BASIC
     name: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, required: true, trim: true },
     category: { type: Schema.Types.ObjectId, ref: "Category", required: true },
@@ -51,7 +51,7 @@ const productSchema = new Schema(
     tags: [{ type: String, trim: true }],
     type: { type: String, enum: ["simple", "variable"], default: "simple" },
 
-    // PRICING
+    // Pricing
     price: { type: Number, required: true, min: 0 },
     oldPrice: { type: Number, min: 0, default: null },
     costPrice: { type: Number, min: 0, default: null },
@@ -63,22 +63,22 @@ const productSchema = new Schema(
     },
     discountValue: { type: Number, min: 0, default: 0 },
 
-    // INVENTORY
-    stock: { type: Number, min: 0, default: null },
+    // Inventory
+    stock: { type: Number, min: 0, default: 0 },
     lowStockThreshold: { type: Number, min: 0, default: 5 },
     trackInventory: { type: Boolean, default: true },
     allowBackorder: { type: Boolean, default: false },
     sku: { type: String, trim: true, unique: true, sparse: true },
     barcode: { type: String, trim: true },
 
-    // IMAGES
+    // Images
     images: { type: [imageSchema], default: [] },
 
-    // SUPPLIER & VENDOR
+    // Supplier & Vendor
     supplier: { type: Schema.Types.ObjectId, ref: "Supplier", required: true },
     vendor: { type: Schema.Types.ObjectId, ref: "Vendor" },
 
-    // RATINGS
+    // Ratings & Reviews
     ratings: [
       {
         userId: { type: Schema.Types.ObjectId, ref: "User" },
@@ -88,7 +88,11 @@ const productSchema = new Schema(
       },
     ],
 
-    // STATUS & VISIBILITY
+    // Refund & Sales Stats
+    totalSold: { type: Number, default: 0 },
+    totalReturned: { type: Number, default: 0 }, // 👈 Track returned products
+
+    // Status & Visibility
     status: {
       type: String,
       enum: ["active", "inactive", "draft", "pending"],
@@ -100,10 +104,7 @@ const productSchema = new Schema(
       default: "private",
     },
 
-    // VARIANTS
     variants: { type: [variantSchema], default: [] },
-
-    // SECTIONS
     sections: [
       {
         type: String,
@@ -111,7 +112,7 @@ const productSchema = new Schema(
       },
     ],
 
-    // FLASH SALE
+    // Flash Sale
     flashSale: {
       isActive: { type: Boolean, default: false },
       discountPercentage: { type: Number, min: 0, max: 100, default: 0 },
@@ -119,8 +120,9 @@ const productSchema = new Schema(
       endDate: { type: Date, default: null },
     },
 
-    // LOGISTICS
-    weight: { type: Number, min: 0, default: null },
+    // Logistics
+    weight: { type: Number, min: 0, required: true },
+    fragility: { type: String, enum: ["low", "medium", "high"], default: "low" },
     dimensions: {
       length: { type: Number, min: 0, default: 0 },
       width: { type: Number, min: 0, default: 0 },
@@ -130,19 +132,17 @@ const productSchema = new Schema(
     shippingClass: { type: String, trim: true },
     deliveryTime: { type: String, trim: true },
     handlingFee: { type: Number, min: 0, default: 0 },
-    freeShipping: { type: Boolean, default: false },
+    freeShippingThreshold: { type: Number, min: 0, default: 5000 },
     warehouseLocation: { type: String, trim: true },
 
-    // LEGAL
+    // Legal & SEO
     returnPolicy: { type: String, trim: true },
     warranty: { type: String, trim: true },
     countryOfOrigin: { type: String, trim: true },
     hsCode: { type: String, trim: true },
-
-    // SEO
     seo: { type: seoSchema, default: {} },
 
-    // FLAGS & SOFT DELETE
+    // Flags
     flags: {
       isNewArrival: { type: Boolean, default: false },
       isTopSeller: { type: Boolean, default: false },
@@ -154,30 +154,21 @@ const productSchema = new Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-/* Indexes */
-productSchema.index({ name: "text", description: "text", tags: "text" });
-productSchema.index({ category: 1, supplier: 1 });
-productSchema.index({ price: 1 });
-productSchema.index({ createdAt: -1 });
-
-/* Virtual: discountedPrice */
-productSchema.virtual("discountedPrice").get(function () {
-  if (this.discountType === "percentage") {
-    return Math.max(0, this.price - (this.price * this.discountValue) / 100);
-  }
-  if (this.discountType === "fixed") {
-    return Math.max(0, this.price - this.discountValue);
-  }
-  return this.price;
-});
-
-/* Pre-save: ensure slug exists */
+/* ---------- Hooks ---------- */
 productSchema.pre("save", function (next) {
   if (!this.seo) this.seo = {};
-  if (!this.seo.slug && this.name) {
+  if (!this.seo.slug && this.name)
     this.seo.slug = slugify(this.name, { lower: true, strict: true });
-  }
   next();
+});
+
+/* ---------- Virtual ---------- */
+productSchema.virtual("discountedPrice").get(function () {
+  if (this.discountType === "percentage")
+    return Math.max(0, this.price - (this.price * this.discountValue) / 100);
+  if (this.discountType === "fixed")
+    return Math.max(0, this.price - this.discountValue);
+  return this.price;
 });
 
 const Product =

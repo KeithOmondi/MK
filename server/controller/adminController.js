@@ -166,16 +166,16 @@ export const getTopProducts = async (req, res) => {
 export const getLatestReviews = async (req, res) => {
   try {
     const reviews = await Review.find()
-      .populate("user", "name")
-      .populate("product", "name")
+      .populate("userId", "name") // ✅ Correct field name
+      .populate("productId", "name") // ✅ Correct field name
       .sort({ createdAt: -1 })
       .limit(5);
 
-    // Flatten review data to match frontend
+    // ✅ Format the data for frontend
     const formattedReviews = reviews.map((r) => ({
       _id: r._id,
-      user: r.user?.name || "Unknown",
-      product: r.product?.name || "Unknown",
+      user: r.userId?.name || "Unknown",
+      product: r.productId?.name || "Unknown",
       rating: r.rating,
       comment: r.comment,
       createdAt: r.createdAt,
@@ -183,7 +183,8 @@ export const getLatestReviews = async (req, res) => {
 
     res.json({ success: true, data: formattedReviews });
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching latest reviews:", err);
     res.status(500).json({ success: false, message: "Failed to fetch reviews" });
   }
 };
+

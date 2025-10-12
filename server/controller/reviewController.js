@@ -1,5 +1,6 @@
 import Review from "../models/Review.js";
 import Order from "../models/Order.js";
+import Product from "../models/Product.js"; // <- needed for slug lookup
 
 /* ================================
    Add a new review (post-delivery only)
@@ -15,24 +16,19 @@ export const addReview = async (req, res) => {
       });
     }
 
-    // ✅ Check if order exists and belongs to the logged-in buyer
     const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
     if (order.buyer.toString() !== userId.toString()) {
       return res.status(403).json({ message: "Unauthorized — order does not belong to you" });
     }
 
-    // ✅ Only allow reviews for delivered orders
     if (order.status !== "Delivered") {
       return res.status(400).json({
         message: "You can only review products from delivered orders",
       });
     }
 
-    // ✅ Check that the product is in the order
     const productInOrder = order.items.find(
       (item) => item.product.toString() === productId.toString()
     );
@@ -41,13 +37,11 @@ export const addReview = async (req, res) => {
       return res.status(400).json({ message: "Product not part of this order" });
     }
 
-    // ✅ Prevent duplicate reviews (per order, product, and user)
     const existingReview = await Review.findOne({ orderId, productId, userId });
     if (existingReview) {
       return res.status(400).json({ message: "You have already reviewed this product" });
     }
 
-    // ✅ Create review
     const review = await Review.create({
       productId,
       orderId,
@@ -65,14 +59,19 @@ export const addReview = async (req, res) => {
   }
 };
 
-
-
 /* ================================
-   Get all reviews for a product
+   Get all reviews for a product (by slug or ID)
 ================================ */
 export const getReviewsByProduct = async (req, res) => {
   try {
-    const { id: productId } = req.params;
+    let productId = req.params.id;
+
+    // If productId is not a valid ObjectId, treat it as a slug
+    if (!/^[0-9a-fA-F]{24}$/.test(productId)) {
+      const product = await Product.findOne({ slug: productId });
+      if (!product) return res.status(404).json({ success: false, message: "Product not found" });
+      productId = product._id;
+    }
 
     const reviews = await Review.find({ productId })
       .populate("userId", "name email")

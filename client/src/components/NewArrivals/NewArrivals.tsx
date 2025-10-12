@@ -1,28 +1,33 @@
+// src/components/home/NewArrivals.tsx
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
-import type { AppDispatch, RootState } from "../../redux/store";
-import {
-  fetchSectionProducts,
-  selectSectionProducts,
-  selectSectionsLoading,
-  selectSectionsError,
-} from "../../redux/slices/sectionSlice";
+import type { AppDispatch } from "../../redux/store";
 import { getDisplayPrice } from "../../utils/price";
 import type { Product, ProductVariant } from "../../redux/slices/productSlice";
+import {
+  fetchHomepageProducts,
+  selectHomepageProducts,
+  selectProductLoading,
+  selectProductError,
+} from "../../redux/slices/productSlice";
 
 const NewArrivals: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
 
-  // ✅ Redux state
-  const sectionProducts = useSelector((state: RootState) => selectSectionProducts(state, "NewArrivals"));
-  const loading = useSelector(selectSectionsLoading);
-  const error = useSelector(selectSectionsError);
+  // Redux selectors
+  const homepageProducts = useSelector(selectHomepageProducts);
+  const loading = useSelector(selectProductLoading);
+  const error = useSelector(selectProductError);
 
+  // Extract section
+  const sectionProducts: Product[] = homepageProducts?.newarrivals || [];
+
+  // Fetch if not loaded
   useEffect(() => {
-    if (!sectionProducts || sectionProducts.length === 0) {
-      dispatch(fetchSectionProducts({ sectionName: "NewArrivals", limit: 8 }));
+    if (sectionProducts.length === 0) {
+      dispatch(fetchHomepageProducts());
     }
   }, [dispatch, sectionProducts.length]);
 
@@ -42,55 +47,60 @@ const NewArrivals: React.FC = () => {
         </Link>
       </div>
 
-      {/* Product Grid */}
+      {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-        {/* Loading Skeleton */}
+        {/* Loading */}
         {loading &&
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="animate-pulse bg-gray-100 shadow rounded-xl h-56" />
+          Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="animate-pulse bg-gray-100 shadow rounded-xl h-56"
+            />
           ))}
 
-        {/* Error State */}
+        {/* Error */}
         {error && (
           <p className="col-span-full text-center text-red-600 font-medium">
-            {typeof error === "string" ? error : "Failed to load new arrivals. Please try again."}
+            {typeof error === "string"
+              ? error
+              : "Failed to load new arrivals. Please try again."}
           </p>
         )}
 
-        {/* Empty State */}
+        {/* Empty */}
         {!loading && !error && sectionProducts.length === 0 && (
           <p className="col-span-full text-center text-gray-600">
-            No new arrivals right now.
+            No new arrivals available right now.
           </p>
         )}
 
-        {/* Products */}
+        {/* Product Cards */}
         {!loading &&
           !error &&
-          sectionProducts.map((product: Product) => {
+          sectionProducts.map((product) => {
             const variant: ProductVariant | undefined = product.variants?.[0];
             const { price, oldPrice } = getDisplayPrice(product, variant);
 
             return (
               <Link
-                to={`/product/${product._id}`}
                 key={product._id}
-                className="group bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100 hover:shadow-md transition"
+                to={`/product/${product.seo?.slug || product._id}`}
+                className="group bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100 hover:shadow-md transition block"
               >
-                {/* Product Image */}
+                {/* Image */}
                 <div className="relative">
                   <img
                     src={product.images?.[0]?.url || "/placeholder.png"}
                     alt={product.name}
                     loading="lazy"
-                    className="w-full h-48 sm:h-56 object-contain bg-white transition-transform duration-200 group-hover:scale-105"
+                    className="w-full h-48 sm:h-56 object-contain bg-white transition-transform duration-200 group-hover:scale-105 cursor-pointer"
                   />
                   <span className="absolute top-2 left-2 bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded">
                     New
                   </span>
                 </div>
 
-                {/* Product Info */}
+                {/* Info */}
                 <div className="p-3">
                   <h3
                     className="text-gray-800 font-medium text-sm truncate"
@@ -99,28 +109,28 @@ const NewArrivals: React.FC = () => {
                     {product.name}
                   </h3>
 
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-lg font-bold text-gray-900">
-                      Ksh {price.toFixed(2)}
-                    </span>
-                    {oldPrice && (
-                      <span className="text-sm line-through text-gray-400">
-                        Ksh {oldPrice.toFixed(2)}
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-lg font-bold text-gray-900">
+                        Ksh {price.toFixed(2)}
                       </span>
-                    )}
-                  </div>
+                      {oldPrice && (
+                        <span className="text-sm line-through text-gray-400">
+                          Ksh {oldPrice.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
 
-                  {variant?.stock !== undefined && (
-                    <p
-                      className={`mt-1 text-sm font-medium ${
-                        variant.stock > 0 ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {variant.stock > 0
-                        ? `In Stock (${variant.stock} left)`
-                        : "Out of Stock"}
-                    </p>
-                  )}
+                    {variant?.stock !== undefined && (
+                      <p
+                        className={`mt-1 text-sm font-medium ${
+                          variant.stock > 0 ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {variant.stock > 0
+                          ? `In Stock (${variant.stock} left)`
+                          : "Out of Stock"}
+                      </p>
+                    )}
                 </div>
               </Link>
             );

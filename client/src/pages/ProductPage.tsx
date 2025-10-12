@@ -1,9 +1,17 @@
 // src/pages/ProductPage.tsx
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
 import { useParams } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector, shallowEqual } from "react-redux";
 import { ShoppingCart, Star, User } from "lucide-react";
 import { toast } from "react-toastify";
+import Header from "../components/common/Header";
+import Footer from "../components/common/Footer";
+import RelatedProducts from "./RelatedProducts";
 import {
   fetchProductById,
   selectProduct,
@@ -15,28 +23,25 @@ import {
 import { addToCart } from "../redux/slices/cartSlice";
 import {
   getReviewsByProduct,
-  selectReviewsByProduct,
   selectReviewLoading,
+  selectReviewsByProduct,
 } from "../redux/slices/reviewSlice";
-import type { AppDispatch, RootState } from "../redux/store";
-import Header from "../components/common/Header";
-import Footer from "../components/common/Footer";
-import RelatedProducts from "./RelatedProducts";
+import type { AppDispatch } from "../redux/store";
 
-/* ===============================
-   Helper Functions
-=============================== */
+/* ----------------------------------
+   Helpers
+---------------------------------- */
 const createSafeVariant = (
   variant: Partial<ProductVariant> | undefined,
   product: Product,
   isDefault = false
 ): ProductVariant => {
-  const price: number =
+  const price =
     variant?.price && variant.price > 0
       ? Number(variant.price)
       : Number(product.price ?? 0);
 
-  const stock: number =
+  const stock =
     variant?.stock && variant.stock > 0
       ? Number(variant.stock)
       : Number(product.stock ?? 0);
@@ -44,9 +49,7 @@ const createSafeVariant = (
   return {
     _id:
       variant?._id ??
-      (isDefault
-        ? `${product._id}-default-variant`
-        : `${product._id}-variant-fallback`),
+      (isDefault ? `${product._id}-default` : `${product._id}-fallback`),
     price,
     stock,
     color: variant?.color ?? "Default",
@@ -55,29 +58,32 @@ const createSafeVariant = (
   };
 };
 
-
 const calculateAverageRating = (reviews: any[]) => {
-  if (!reviews.length) return 0;
+  if (!reviews?.length) return 0;
   const total = reviews.reduce((sum, r) => sum + (r.rating || 0), 0);
   return total / reviews.length;
 };
 
-/* ===============================
-   Main Component
-=============================== */
-const ProductPage = () => {
+/* ----------------------------------
+   Component
+---------------------------------- */
+const ProductPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
-  const product = useSelector(selectProduct);
+  // Redux selectors (use shallowEqual to prevent rerenders)
+  const product = useSelector(selectProduct, shallowEqual);
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
-
-  const reviews = useSelector((state: RootState) =>
-    selectReviewsByProduct(id || "")(state)
-  );
   const reviewsLoading = useSelector(selectReviewLoading);
 
+  // Memoized review selector to avoid "selector unknown returned different result" warning
+  const reviews = useSelector(
+    useMemo(() => selectReviewsByProduct(id || ""), [id]),
+    shallowEqual
+  );
+
+  // Local UI state
   const [selectedImage, setSelectedImage] = useState<string>("");
   const [selectedVariant, setSelectedVariant] =
     useState<ProductVariant | null>(null);
@@ -88,31 +94,52 @@ const ProductPage = () => {
     [reviews]
   );
 
-  /* ===============================
-     Fetch Data
-  =============================== */
+  /* ------------------------------
+     Fetch product + reviews
+  ------------------------------ */
   useEffect(() => {
-    if (id) {
-      dispatch(fetchProductById(id));
-      dispatch(getReviewsByProduct(id));
-    }
+    if (!id) return;
+
+    dispatch(fetchProductById(id))
+      .unwrap()
+      .catch(() => toast.error("Failed to load product details"));
+
+    dispatch(getReviewsByProduct(id)).catch(() =>
+      console.warn("No reviews found for product")
+    );
   }, [id, dispatch]);
 
+  /* ------------------------------
+     Image & Variant Initialization
+  ------------------------------ */
   useEffect(() => {
     if (!product) return;
-    if (product.images?.length && !selectedImage)
-      setSelectedImage(product.images[0].url);
-    if (!selectedVariant)
-      setSelectedVariant(createSafeVariant(product.variants?.[0], product, true));
+
+    const hasImages =
+      Array.isArray(product.images) && product.images.length > 0;
+
+    if (!selectedImage && hasImages && product.images![0]?.url) {
+      setSelectedImage(product.images![0].url);
+    }
+
+    if (!selectedVariant) {
+      const defaultVariant = createSafeVariant(
+        product.variants?.[0],
+        product,
+        true
+      );
+      setSelectedVariant(defaultVariant);
+    }
   }, [product, selectedImage, selectedVariant]);
 
-  /* ===============================
+  /* ------------------------------
      Handlers
-  =============================== */
+  ------------------------------ */
   const handleVariantChange = useCallback(
     (variant: ProductVariant) => {
       if (!product) return;
-      setSelectedVariant(createSafeVariant(variant, product));
+      const safeVariant = createSafeVariant(variant, product);
+      setSelectedVariant(safeVariant);
       setQuantity(1);
     },
     [product]
@@ -147,6 +174,7 @@ const ProductPage = () => {
             : product.supplier?._id,
       })
     );
+
     toast.success(`${product.name} added to cart`);
   }, [product, selectedVariant, quantity, dispatch]);
 
@@ -155,39 +183,45 @@ const ProductPage = () => {
     if (stock > 10) return <span className="text-green-600">In Stock</span>;
     if (stock > 0)
       return (
-        <span className="text-orange-500">Low Stock: {stock} remaining</span>
+        <span className="text-orange-500">Low Stock: {stock} left</span>
       );
     return <span className="text-red-600">Out of Stock</span>;
   }, [selectedVariant]);
 
-  /* ===============================
-     Render
-  =============================== */
+  /* ------------------------------
+     Conditional States
+  ------------------------------ */
   if (loading && !product)
     return (
-      <p className="text-center mt-20 text-xl font-medium">
+      <p className="text-center mt-20 text-lg font-medium">
         Loading product details...
       </p>
     );
+
   if (error)
     return (
-      <p className="text-center mt-20 text-xl text-red-600 font-medium">
+      <p className="text-center mt-20 text-red-600 font-medium">
         Error: {error}
       </p>
     );
+
   if (!product)
     return (
-      <p className="text-center mt-20 text-xl font-medium">Product not found</p>
+      <p className="text-center mt-20 text-lg font-medium">
+        Product not found.
+      </p>
     );
 
+  /* ------------------------------
+     Render
+  ------------------------------ */
   return (
     <>
       <Header />
 
       <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
-        {/* --- Product Overview --- */}
         <div className="grid md:grid-cols-2 gap-10">
-          {/* --- Images --- */}
+          {/* ---------- Images ---------- */}
           <div>
             <img
               src={selectedImage}
@@ -199,7 +233,7 @@ const ProductPage = () => {
                 <img
                   key={idx}
                   src={img.url}
-                  alt={`${product.name} thumbnail ${idx + 1}`}
+                  alt={`${product.name} ${idx + 1}`}
                   onClick={() => setSelectedImage(img.url)}
                   className={`w-20 h-20 object-cover rounded-xl cursor-pointer border-2 transition-all duration-200 ${
                     selectedImage === img.url
@@ -211,7 +245,7 @@ const ProductPage = () => {
             </div>
           </div>
 
-          {/* --- Details --- */}
+          {/* ---------- Product Info ---------- */}
           <div className="flex flex-col gap-5">
             <h1 className="text-3xl font-bold text-gray-900">
               {product.name}
@@ -232,11 +266,12 @@ const ProductPage = () => {
               </span>
             </div>
 
+            {/* Price */}
             <p className="text-3xl font-extrabold text-blue-600">
               KSh {selectedVariant?.price?.toLocaleString()}
             </p>
 
-            {/* Variant Selection */}
+            {/* Colors */}
             {product.colors?.length ? (
               <div>
                 <p className="font-semibold text-gray-700 mb-2">
@@ -265,7 +300,7 @@ const ProductPage = () => {
               </div>
             ) : null}
 
-            {/* Quantity + Stock */}
+            {/* Quantity */}
             <div className="flex flex-col gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
               <div className="flex items-center gap-4">
                 <p className="font-semibold text-gray-700">Quantity:</p>
@@ -293,7 +328,7 @@ const ProductPage = () => {
                   </button>
                 </div>
               </div>
-              <p className="text-sm font-medium">Stock Status: {stockDisplay}</p>
+              <p className="text-sm font-medium">Stock: {stockDisplay}</p>
               <p className="text-sm font-medium text-gray-600">
                 VAT: {product.taxPercentage ?? 16}%
               </p>
@@ -324,7 +359,7 @@ const ProductPage = () => {
             Product Description
           </h3>
           <div className="text-gray-600 leading-relaxed whitespace-pre-wrap">
-            {product.description}
+            {product.description || "No description available."}
           </div>
         </div>
 
@@ -349,7 +384,7 @@ const ProductPage = () => {
                       <span className="font-semibold text-gray-800">
                         {typeof r.userId === "string"
                           ? "Anonymous"
-                          : r.userId?.name ?? "Anonymous"}
+                          : r.userId?.name || "Anonymous"}
                       </span>
                     </div>
                     <div className="flex text-yellow-500">

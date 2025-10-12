@@ -9,6 +9,7 @@ import {
   getHomepageProducts,
   getAllProductsForAdmin,
   getProductsByCategory,
+  getProductsBySection,
 } from "../controller/productController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/upload.js";
@@ -50,6 +51,13 @@ router.get("/category/:id", getProductsByCategory);
  * GET /api/v1/products/homepage
  */
 router.get("/homepage", getHomepageProducts);
+
+
+/**
+ * Get single section (e.g. /api/v1/products/section/NewArrivals)
+ * GET /api/v1/products/section/:section
+ */
+router.get("/section/:section", getProductsBySection);
 
 /**
  * Get single product by id or slug

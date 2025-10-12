@@ -9,6 +9,7 @@ import {
   resendOTP,
   resetPassword,
   updatePassword,
+  updateProfile,
   verifyOTP,
   // future: getLoginHistory, forceChangePassword
 } from "../controller/authController.js";
@@ -41,6 +42,8 @@ router.put("/password/update", isAuthenticated, updatePassword);
 
 // OTP
 router.post("/otp/resend", resendOTP);
+
+router.put("/profile/update", isAuthenticated, updateProfile);
 
 // 🔐 Future security routes (not wired yet)
 // router.get("/logins", isAuthenticated, getLoginHistory);

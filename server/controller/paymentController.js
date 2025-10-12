@@ -205,3 +205,25 @@ export const getPaymentStatus = asyncHandler(async (req, res) => {
     status: order.status,
   });
 });
+
+
+// POST /api/admin/release/:orderId
+export const adminReleaseEscrow = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+  const order = await Order.findById(orderId).populate("supplier");
+  if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+
+  const supplier = order.supplier;
+  if (!supplier || !supplier.phone)
+    return res.status(400).json({ success: false, message: "Supplier missing or invalid phone" });
+
+  const success = await sendMpesaPayment(supplier.phone, order.totalEscrowHeld, order._id);
+  if (!success)
+    return res.status(500).json({ success: false, message: "Failed to send M-Pesa payment" });
+
+  order.paymentReleaseStatus = "Released";
+  order.items.forEach((i) => (i.escrowStatus = "Released"));
+  await order.save();
+
+  res.json({ success: true, message: "Escrow released successfully", order });
+});

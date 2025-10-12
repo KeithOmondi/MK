@@ -17,6 +17,7 @@ import {
 import AdminRoute from "./routes/AdminRoute";
 import PrivateRoute from "./routes/PrivateRoute";
 import SupplierRoute from "./routes/SupplierRoute";
+import { initSocket } from "./utils/socket";
 
 // ✅ Global Loader Component
 const GlobalLoader = () => {
@@ -41,14 +42,19 @@ const GlobalLoader = () => {
 
 function App() {
   const dispatch = useDispatch<AppDispatch>();
-  const { token } = useSelector((state: RootState) => state.auth);
+  const { accessToken } = useSelector((state: RootState) => state.auth);
 
-  // ✅ Hydrate user on refresh if token exists
+  // ✅ Hydrate user on refresh if accessToken exists
   useEffect(() => {
-    if (token) {
+    if (accessToken) {
       dispatch(getUser());
     }
-  }, [token, dispatch]);
+  }, [accessToken, dispatch]);
+
+  // ✅ Initialize socket once globally
+  useEffect(() => {
+    initSocket();
+  }, []);
 
   return (
     <BrowserRouter>

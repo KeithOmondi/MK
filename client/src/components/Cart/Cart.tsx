@@ -1,4 +1,3 @@
-// src/pages/Cart.tsx
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch } from "../../redux/store";
 import {
@@ -6,7 +5,7 @@ import {
   updateQuantity,
   clearCart,
   selectCartItems,
-  selectCartTotal,
+  selectCartTotals,
 } from "../../redux/slices/cartSlice";
 import Header from "../common/Header";
 import Footer from "../common/Footer";
@@ -17,7 +16,8 @@ export default function Cart() {
   const navigate = useNavigate();
 
   const cartItems = useSelector(selectCartItems);
-  const totalAmount = useSelector(selectCartTotal);
+  const checkoutTotals = useSelector(selectCartTotals);
+  const totalAmount = checkoutTotals.totalAmount;
 
   const handleQuantityChange = (id: string, quantity: number, stock?: number) => {
     if (quantity > 0 && quantity <= (stock ?? Infinity)) {
@@ -49,7 +49,7 @@ export default function Cart() {
                   />
                   <div className="flex-1">
                     <h2 className="font-semibold text-gray-800">{item.name}</h2>
-                    <p className="text-green-700 font-bold">Ksh{item.price}</p>
+                    <p className="text-green-700 font-bold">Ksh {item.price}</p>
                     <p className="text-sm text-gray-500">Brand: {item.brand ?? "N/A"}</p>
                     <p className="text-sm text-gray-500">
                       {item.stock && item.stock > 0 ? (
@@ -75,9 +75,7 @@ export default function Cart() {
                     >
                       -
                     </button>
-
                     <span>{item.quantity}</span>
-
                     <button
                       onClick={() =>
                         handleQuantityChange(item._id, item.quantity + 1, item.stock)
@@ -106,18 +104,38 @@ export default function Cart() {
             {/* Order Summary */}
             <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 h-fit">
               <h2 className="text-xl font-bold mb-4">Order Summary</h2>
-              <p className="flex justify-between mb-2">
-                <span>Items:</span>
-                <span>{cartItems.length}</span>
-              </p>
-              <p className="flex justify-between font-semibold text-lg mb-4">
+
+              <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
+                {cartItems.map((item) => (
+                  <div key={item._id} className="flex items-center gap-3">
+                    <img
+                      src={item.images?.[0]?.url || "/assets/placeholder.png"}
+                      alt={item.name}
+                      className="w-12 h-12 object-contain rounded"
+                    />
+                    <div className="flex-1">
+                      <p className="text-gray-800 font-semibold">{item.name}</p>
+                      <p className="text-gray-500 text-sm">
+                        Qty: {item.quantity} × Ksh {item.price.toLocaleString()}
+                      </p>
+                    </div>
+                    <p className="font-bold text-green-700">
+                      Ksh {(item.price * item.quantity).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <p className="flex justify-between font-semibold text-lg mb-4 border-t pt-4">
                 <span>Total:</span>
                 <span>Ksh {totalAmount.toLocaleString()}</span>
               </p>
 
               <button
                 onClick={() => navigate("/checkout")}
-                disabled={cartItems.length === 0 || cartItems.every((i) => (i.stock ?? 0) < 1)}
+                disabled={
+                  cartItems.length === 0 || cartItems.every((i) => (i.stock ?? 0) < 1)
+                }
                 className={`w-full py-2 rounded-lg mb-3 text-white transition ${
                   cartItems.length === 0 || cartItems.every((i) => (i.stock ?? 0) < 1)
                     ? "bg-gray-400 cursor-not-allowed"

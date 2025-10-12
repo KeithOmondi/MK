@@ -1,8 +1,11 @@
+import validator from "validator";
 import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { User } from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import { v2 as cloudinary } from "cloudinary";
+
+
 
 // ==========================
 // Get All Verified Users
@@ -159,25 +162,58 @@ export const fetchUserProfile = catchAsyncErrors(async (req, res, next) => {
 // Update Logged-in User Profile
 // ==========================
 export const updateUserProfile = catchAsyncErrors(async (req, res, next) => {
-  const user = await User.findById(req.user._id);
-  if (!user) return res.status(404).json({ message: "User not found" });
+  const user = await User.findById(req.user.id);
+  if (!user) return next(new ErrorHandler("User not found", 404));
 
-  const { name, email, password } = req.body;
+  const { name, email } = req.body;
+  const updates = {};
 
-  if (name) user.name = name;
-  if (email) user.email = email;
-  if (password) user.password = password; // Make sure your User model hashes passwords in a pre-save hook
+  // Basic validation
+  if (name && name.trim().length < 2) {
+    return next(new ErrorHandler("Name must be at least 2 characters long", 400));
+  }
 
-  await user.save();
+  if (email && !validator.isEmail(email)) {
+    return next(new ErrorHandler("Please provide a valid email address", 400));
+  }
+
+  if (name) updates.name = name.trim();
+  if (email) updates.email = email.trim().toLowerCase();
+
+  /* -------------------------
+     ✅ Handle Avatar Upload
+  ------------------------- */
+  if (req.files && req.files.avatar) {
+    const { avatar } = req.files;
+    const allowedFormats = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
+    if (!allowedFormats.includes(avatar.mimetype)) {
+      return next(new ErrorHandler("Please upload a valid image format", 400));
+    }
+
+    // Delete old avatar if exists
+    if (user.avatar?.public_id) {
+      await cloudinary.uploader.destroy(user.avatar.public_id);
+    }
+
+    // Upload new one
+    const uploadRes = await cloudinary.uploader.upload(avatar.tempFilePath, {
+      folder: "MKSTORE/avatars",
+    });
+
+    updates.avatar = {
+      public_id: uploadRes.public_id,
+      url: uploadRes.secure_url,
+    };
+  }
+
+  // Apply updates
+  Object.assign(user, updates);
+  await user.save({ validateBeforeSave: false });
 
   res.status(200).json({
     success: true,
-    data: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    },
-    message: "Profile updated successfully",
+    message: "Profile updated successfully.",
+    user,
   });
 });

@@ -10,27 +10,18 @@ import {
 
 const ObjectId = mongoose.Types.ObjectId;
 
-const ALLOWED_SECTIONS = [
-  "FlashSales",
-  "BestDeals",
-  "NewArrivals",
-  "TopTrending",
-];
+export const ALLOWED_SECTIONS = ["FlashSales", "BestDeals", "NewArrivals", "TopTrending"];
 const MAX_PAGE_SIZE = 100;
 
-/* ---------- helpers ---------- */
+/* ----------------- Helpers ----------------- */
 const isValidObjectId = (id) => ObjectId.isValid(id);
 
-const parseJSON = (input) => {
-  if (!input) return null;
-  if (typeof input === "string") {
-    try {
-      return JSON.parse(input);
-    } catch {
-      return null;
-    }
+const safeJSON = (val) => {
+  try {
+    return typeof val === "string" ? JSON.parse(val) : val;
+  } catch {
+    return null;
   }
-  return input;
 };
 
 const validateDimensions = (dim) => {
@@ -47,203 +38,99 @@ const validateVariants = (variants) =>
       (v.stock == null || (typeof v.stock === "number" && v.stock >= 0))
   );
 
-/* ---------- Safe JSON parse helper ---------- */
-const safeJSON = (value) => {
-  if (!value) return null;
-  try {
-    return typeof value === "string" ? JSON.parse(value) : value;
-  } catch {
-    return null;
-  }
-};
-
-/* ---------- CREATE PRODUCT ---------- */
+/* ----------------- CREATE PRODUCT ----------------- */
 export const createProduct = asyncHandler(async (req, res) => {
   const body = req.body || {};
   const { name, description, category, price } = body;
 
-  /* ---------- Required field validation ---------- */
   if (!name || !description || !category || price == null) {
     res.status(400);
     throw new Error("Name, description, category, and price are required.");
   }
-  if (price < 0) {
-    res.status(400);
-    throw new Error("Price cannot be negative.");
-  }
+
   if (!isValidObjectId(category)) {
     res.status(400);
     throw new Error("Invalid category ID.");
   }
 
-  /* ---------- Verify supplier ---------- */
-  const supplier = await Supplier.findOne({ user: req.user._id }).select(
-    "_id products"
-  );
+  const supplier = await Supplier.findOne({ user: req.user._id }).select("_id");
   if (!supplier) {
     res.status(403);
     throw new Error("You must register as a supplier first.");
   }
 
-  /* ---------- Validate category ---------- */
-  const categoryDoc = await Category.findById(category).select("name _id");
+  const categoryDoc = await Category.findById(category);
   if (!categoryDoc) {
     res.status(404);
     throw new Error("Category not found.");
   }
 
-  /* ---------- Dimensions ---------- */
-  const dimensionsRaw = safeJSON(body.dimensions);
-  let dimensions = { length: 0, width: 0, height: 0 };
-  if (dimensionsRaw) {
-    if (!validateDimensions(dimensionsRaw)) {
-      res.status(400);
-      throw new Error("Invalid dimensions format.");
-    }
-    dimensions = dimensionsRaw;
-  }
+  const dimensions = safeJSON(body.dimensions) || { length: 0, width: 0, height: 0 };
+  const variants = safeJSON(body.variants) || [];
 
-  /* ---------- Variants ---------- */
-  const variantsRaw = safeJSON(body.variants);
-  let variants = [];
-  if (Array.isArray(variantsRaw) && variantsRaw.length > 0) {
-    const validVariants = variantsRaw.filter(
-      (v) =>
-        (v.price > 0 && typeof v.price === "number") ||
-        (v.stock > 0 && typeof v.stock === "number")
-    );
-    if (!validateVariants(validVariants)) {
-      res.status(400);
-      throw new Error("Invalid variants data.");
-    }
-    variants = validVariants;
-  }
-
-  /* ---------- Stock ---------- */
   let stockValue = Number(body.stock) || 0;
   if (variants.length > 0) {
-    const variantStock = variants.reduce((acc, v) => acc + (v.stock || 0), 0);
-    if (variantStock > 0) stockValue = variantStock;
+    const totalStock = variants.reduce((a, v) => a + (v.stock || 0), 0);
+    if (totalStock > 0) stockValue = totalStock;
   }
 
-  /* ---------- Flash Sale ---------- */
-  const flashSale = safeJSON(body.flashSale) || {};
-  if (flashSale?.startDate && flashSale?.endDate) {
-    if (new Date(flashSale.endDate) <= new Date(flashSale.startDate)) {
-      res.status(400);
-      throw new Error("Flash sale endDate must be after startDate.");
-    }
-  }
+  const sectionsArr = (() => {
+    const parsed = safeJSON(body.sections);
+    if (Array.isArray(parsed)) return parsed.filter((s) => ALLOWED_SECTIONS.includes(s));
+    if (typeof parsed === "string" && ALLOWED_SECTIONS.includes(parsed)) return [parsed];
+    return ["NewArrivals"];
+  })();
 
-  /* ---------- Images ---------- */
-  if (!req.files?.length) {
-    res.status(400);
-    throw new Error("At least one product image is required.");
-  }
-
-  const uploadResults = await Promise.allSettled(
-    req.files.map((f) => uploadToCloudinary(f.buffer))
-  );
-
+  const uploadResults = req.files
+    ? await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)))
+    : [];
   const successfulUploads = uploadResults
     .filter((r) => r.status === "fulfilled")
     .map((r) => r.value);
 
-  if (!successfulUploads.length) {
-    res.status(500);
-    throw new Error("Image upload failed. Please retry.");
-  }
+  // Generate SKU
+  const catPrefix = categoryDoc.name?.slice(0, 3).toUpperCase() || "GEN";
+  const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const generatedSKU = `MK-${catPrefix}-${dateCode}-${rand}`;
 
-  /* ---------- Sections ---------- */
-  let sectionsArr = [];
-  try {
-    const parsed = safeJSON(body.sections);
-    if (Array.isArray(parsed)) {
-      sectionsArr = parsed.filter((s) => ALLOWED_SECTIONS.includes(s));
-    } else if (
-      typeof parsed === "string" &&
-      ALLOWED_SECTIONS.includes(parsed)
-    ) {
-      sectionsArr = [parsed];
-    }
-  } catch {
-    sectionsArr = [];
-  }
-  if (sectionsArr.length === 0) {
-    sectionsArr = ["NewArrivals"];
-  }
-
-  /* ---------- Shipping Regions ---------- */
-  const shippingRegions = String(body.shippingRegions || "")
-    .split(",")
-    .map((r) => r.trim())
-    .filter(Boolean);
-
-  /* ---------- SKU Generation ---------- */
-  let generatedSKU;
-  if (typeof body.sku === "string" && body.sku.trim()) {
-    generatedSKU = body.sku.trim().toUpperCase();
-  } else {
-    const catPrefix = categoryDoc.name?.slice(0, 3).toUpperCase() || "GEN";
-    const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-    generatedSKU = `MK-${catPrefix}-${dateCode}-${rand}`;
-  }
-
-  // Ensure unique SKU
-  let uniqueSKU = generatedSKU;
-  while (await Product.findOne({ sku: uniqueSKU })) {
-    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
-    uniqueSKU = `${generatedSKU}-${rand}`;
-  }
-
-  /* ---------- Payload ---------- */
   const payload = {
-    sku: uniqueSKU,
-    name: name.trim(),
-    description: description.trim(),
+    name,
+    description,
     category,
     supplier: supplier._id,
-    price: Number(price),
-    oldPrice: body.oldPrice ? Number(body.oldPrice) : null,
-    brand: body.brand?.trim(),
+    price,
     stock: stockValue,
-    weight: body.weight ? Number(body.weight) : null,
-    dimensions,
     images: successfulUploads,
     sections: sectionsArr,
-    shippingRegions,
-    deliveryTime: body.deliveryTime?.trim(),
-    freeShipping: Boolean(body.freeShipping),
-    warehouseLocation: body.warehouseLocation?.trim(),
-    returnPolicy: body.returnPolicy?.trim(),
-    warranty: body.warranty?.trim(),
-    flashSale: {
-      isActive: !!flashSale?.isActive,
-      discountPercentage: flashSale?.discountPercentage ?? 0,
-      startDate: flashSale?.startDate ?? null,
-      endDate: flashSale?.endDate ?? null,
-    },
-    variants,
+    sku: generatedSKU,
     status: "pending",
     visibility: "private",
+    weight: Number(body.weight) || 0,
+    dimensions,
+    variants,
+    fragility: body.fragility || "low",
+    shippingRegions: safeJSON(body.shippingRegions) || [],
+    deliveryTime: body.deliveryTime || "",
+    freeShippingThreshold: Number(body.freeShippingThreshold) || 5000,
+    warehouseLocation: body.warehouseLocation || "",
+    returnPolicy: body.returnPolicy || "",
+    warranty: body.warranty || "",
+    flashSale: safeJSON(body.flashSale) || {},
+    tags: safeJSON(body.tags) || [],
+    discountType: body.discountType || "none",
+    discountValue: Number(body.discountValue) || 0,
+    taxRate: Number(body.taxRate) || 0,
+    barcode: body.barcode || "",
+    flags: safeJSON(body.flags) || {},
+    seo: safeJSON(body.seo) || {},
   };
 
-  /* ---------- Save ---------- */
   const product = await Product.create(payload);
-
-  supplier.products = supplier.products || [];
-  supplier.products.push(product._id);
-  await supplier.save();
-
-  res.status(201).json({
-    status: "success",
-    message: "Product submitted for admin approval.",
-    data: product,
-  });
+  res.status(201).json({ status: "success", data: product });
 });
 
-/* ---------- update product ---------- */
+/* ----------------- UPDATE PRODUCT ----------------- */
 export const updateProduct = asyncHandler(async (req, res) => {
   const id = req.params.id;
   if (!isValidObjectId(id)) {
@@ -257,106 +144,113 @@ export const updateProduct = asyncHandler(async (req, res) => {
     throw new Error("Product not found.");
   }
 
-  // permission check
-  if (
-    req.user.role !== "Admin" &&
-    product.supplier.toString() !== req.user._id.toString()
-  ) {
+  if (req.user.role !== "Admin" && product.supplier.toString() !== req.user._id.toString()) {
     res.status(403);
     throw new Error("You are not authorized to update this product.");
   }
 
   const updates = { ...(req.body || {}) };
 
-  // parse variants if provided
+  // Parse and validate variants & dimensions
   if (updates.variants) {
-    const parsed = parseJSON(updates.variants) || updates.variants;
+    const parsed = safeJSON(updates.variants) || updates.variants;
     if (!validateVariants(parsed)) {
       res.status(400);
       throw new Error("Invalid variants data.");
     }
     updates.variants = parsed;
   }
-
-  // dimensions validation
   if (updates.dimensions && !validateDimensions(updates.dimensions)) {
     res.status(400);
     throw new Error("Invalid dimensions.");
   }
 
-  // flashSale validation
+  // Flash sale validation
   if (updates.flashSale) {
-    const fs = parseJSON(updates.flashSale) || updates.flashSale;
-    if (
-      fs.startDate &&
-      fs.endDate &&
-      new Date(fs.endDate) <= new Date(fs.startDate)
-    ) {
+    const fs = safeJSON(updates.flashSale) || updates.flashSale;
+    if (fs.startDate && fs.endDate && new Date(fs.endDate) <= new Date(fs.startDate)) {
       res.status(400);
       throw new Error("Flash sale endDate must be after startDate.");
     }
     updates.flashSale = fs;
   }
 
-  // handle incoming images
+  // Handle uploaded images
   if (req.files && req.files.length) {
-    const uploadResults = await Promise.allSettled(
-      req.files.map((f) => uploadToCloudinary(f.buffer))
-    );
-    const newImages = uploadResults
-      .filter((r) => r.status === "fulfilled")
-      .map((r) => r.value);
+    const uploadResults = await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)));
+    const newImages = uploadResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
     updates.images = [...(product.images || []), ...newImages];
   }
 
-  // Admin approval shortcut: if admin marks approved -> active/public
+  // Admin approval shortcut
   if (req.user.role === "Admin" && updates.status === "approved") {
     updates.status = "active";
     updates.visibility = "public";
   }
 
-  // assign allowed updates only (avoid accidental overwrites)
   const allowed = [
-    "name",
-    "description",
-    "price",
-    "oldPrice",
-    "brand",
-    "stock",
-    "weight",
-    "dimensions",
-    "images",
-    "sections",
-    "shippingRegions",
-    "deliveryTime",
-    "freeShipping",
-    "warehouseLocation",
-    "returnPolicy",
-    "warranty",
-    "flashSale",
-    "variants",
-    "status",
-    "visibility",
-    "tags",
-    "discountType",
-    "discountValue",
-    "taxRate",
-    "sku",
-    "barcode",
-    "flags",
-    "seo",
+    "name","description","price","oldPrice","brand","stock","weight","dimensions","images",
+    "sections","shippingRegions","deliveryTime","freeShippingThreshold","warehouseLocation",
+    "returnPolicy","warranty","flashSale","variants","status","visibility","tags",
+    "discountType","discountValue","taxRate","sku","barcode","flags","seo","fragility"
   ];
   for (const [k, v] of Object.entries(updates)) {
     if (allowed.includes(k) && v != null) product.set(k, v);
   }
 
   const updated = await product.save();
-  res.json({
-    status: "success",
-    message: "Product updated successfully.",
-    data: updated,
-  });
+  res.json({ status: "success", message: "Product updated successfully.", data: updated });
 });
+
+/* ---------- homepage products ---------- */
+export const getHomepageProducts = asyncHandler(async (req, res) => {
+  const sections = ALLOWED_SECTIONS;
+  const result = {};
+
+  await Promise.all(
+    sections.map(async (section) => {
+      const docs = await Product.find({
+        sections: section,
+        status: "active",
+        deletedAt: null,
+      })
+        .populate("category supplier", "name shopName")
+        .limit(10)
+        .lean();
+      result[section.toLowerCase()] = docs;
+    })
+  );
+
+  res.json({ status: "success", data: result });
+});
+
+/* ---------- get products by single section ---------- */
+export const getProductsBySection = asyncHandler(async (req, res) => {
+  const { section } = req.params;
+  const limit = Math.min(Number(req.query.limit) || 10, 50);
+  const sort = req.query.sort === "latest" ? { createdAt: -1 } : { price: 1 };
+
+  if (!ALLOWED_SECTIONS.includes(section)) {
+    return res.status(400).json({
+      status: "error",
+      message: `Invalid section. Allowed: ${ALLOWED_SECTIONS.join(", ")}`,
+    });
+  }
+
+  const products = await Product.find({
+    sections: section,
+    status: "active",
+    deletedAt: null,
+  })
+    .populate("category supplier", "name shopName")
+    .sort(sort)
+    .limit(limit)
+    .lean();
+
+  res.json({ status: "success", section, total: products.length, data: products });
+});
+
+;
 
 /* ---------- get products (public + filters + paging) ---------- */
 export const getProducts = asyncHandler(async (req, res) => {
@@ -403,25 +297,33 @@ export const getProductById = asyncHandler(async (req, res) => {
   const idOrSlug = req.params.id;
   let product = null;
 
+  // ✅ Try fetching by MongoDB _id first
   if (isValidObjectId(idOrSlug)) {
     product = await Product.findOne({ _id: idOrSlug, deletedAt: null })
       .populate("category supplier", "name shopName")
       .lean();
   }
 
+  // ✅ If not found, try fetching by SEO slug
   if (!product) {
     product = await Product.findOne({ "seo.slug": idOrSlug, deletedAt: null })
       .populate("category supplier", "name shopName")
       .lean();
   }
 
+  // ✅ Handle not found
   if (!product) {
     res.status(404);
     throw new Error("Product not found.");
   }
 
-  res.json({ status: "success", data: product });
+  // ✅ Return product in consistent format
+  res.status(200).json({
+    status: "success",
+    data: product,
+  });
 });
+
 
 /* ---------- get products by category (id or slug/name) ---------- */
 export const getProductsByCategory = asyncHandler(async (req, res) => {
@@ -490,28 +392,7 @@ export const deleteProduct = asyncHandler(async (req, res) => {
   res.json({ status: "success", message: "Product deactivated successfully." });
 });
 
-/* ---------- homepage sections ---------- */
-export const getHomepageProducts = asyncHandler(async (req, res) => {
-  const sections = ALLOWED_SECTIONS;
-  const result = {};
 
-  // fetch per section concurrently
-  await Promise.all(
-    sections.map(async (section) => {
-      const docs = await Product.find({
-        sections: section,
-        status: "active",
-        deletedAt: null,
-      })
-        .populate("category supplier", "name shopName")
-        .limit(10)
-        .lean();
-      result[section.toLowerCase()] = docs;
-    })
-  );
-
-  res.json({ status: "success", data: result });
-});
 
 /* ---------- admin list ---------- */
 export const getAllProductsForAdmin = asyncHandler(async (req, res) => {
