@@ -48,6 +48,14 @@ import Wallet from "../pages/User/Wallet";
 import Transactions from "../pages/User/Transactions";
 import CouponsRewards from "../pages/User/CouponsRewards";
 import AdminProfilePage from "../pages/admin/AdminProfilePage";
+import SupplierProfilePage from "../pages/Supplier/SupplierProfilePage";
+import AdminBuyers from "../pages/admin/AdminBuyers";
+import AdminSellerApplications from "../pages/admin/AdminSellerApplications";
+import AdminVerifiedSellers from "../pages/admin/AdminVerifiedSellers";
+import AdminReports from "../pages/admin/AdminReportsFlags";
+import RefundRequests from "../pages/admin/RefundRequests";
+import AdminDisputes from "../pages/admin/AdminDisputes";
+import UserDisputes from "../pages/User/UserDisputes";
 
 
 // ------------------ USER ROUTES ------------------
@@ -112,6 +120,11 @@ export const userRoutes = [
       <Transactions />
     </UserLayout>
   ) },
+  { path: "/user/disputes", element: (
+    <UserLayout>
+      <UserDisputes />
+    </UserLayout>
+  ) },
   // ✅ Sensitive routes WITHOUT UserLayout
   {
     path: "/checkout",
@@ -146,15 +159,24 @@ export const adminRoutes = [
         )
     },
     {
-        path: "/admin/suppliers",
+        path: "/admin/users/suppliers",
         element: (
             <AdminLayout>
                 <AdminSuppliers />
             </AdminLayout>
         )
     },
+   
     {
-        path: "/admin/customers",
+        path: "/admin/profile",
+        element: (
+            <AdminLayout>
+                <AdminProfilePage />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/users",
         element: (
             <AdminLayout>
                 <AdminUsers />
@@ -162,10 +184,50 @@ export const adminRoutes = [
         )
     },
     {
-        path: "/admin/profile",
+        path: "/admin/users/buyers",
         element: (
             <AdminLayout>
-                <AdminProfilePage />
+                <AdminBuyers />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/sellers/applications",
+        element: (
+            <AdminLayout>
+                <AdminSellerApplications />
+            </AdminLayout>
+        )
+    },
+     {
+        path: "/admin/sellers/verified",
+        element: (
+            <AdminLayout>
+                <AdminVerifiedSellers />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/sellers/reports",
+        element: (
+            <AdminLayout>
+                <AdminReports />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/refunds",
+        element: (
+            <AdminLayout>
+                <RefundRequests />
+            </AdminLayout>
+        )
+    },
+    {
+        path: "/admin/disputes",
+        element: (
+            <AdminLayout>
+                <AdminDisputes />
             </AdminLayout>
         )
     },
@@ -218,6 +280,14 @@ export const supplierRoutes = [
     element: (
       <SupplierLayout>
         <SupplierOrderDetails />
+      </SupplierLayout>
+    ),
+  },
+  {
+    path: "/supplier/profile",
+    element: (
+      <SupplierLayout>
+        <SupplierProfilePage />
       </SupplierLayout>
     ),
   },

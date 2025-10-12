@@ -15,7 +15,7 @@ import {
   MdLogout,
   MdExpandMore,
   MdExpandLess,
-  MdMenu,
+  MdClose, // Changed MdMenu to MdClose for the mobile close button
 } from "react-icons/md";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDispatch } from "react-redux";
@@ -31,10 +31,15 @@ interface NavGroup {
   to?: string;
 }
 
+// ==========================
+// 1. Mobile-First Admin Sidebar
+// ==========================
 const AdminSidebar: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { collapsed, toggleSidebar } = useSidebar();
+  // We use `collapsed` for desktop state, but manage mobile visibility locally for better UX
+  const { collapsed: desktopCollapsed, toggleSidebar } = useSidebar();
+  const [mobileOpen, setMobileOpen] = useState(false); // New state for mobile visibility
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
   const toggleDropdown = (label: string) => {
@@ -62,7 +67,7 @@ const AdminSidebar: React.FC = () => {
       subItems: [
         { to: "/admin/users", label: "All Users" },
         { to: "/admin/users/buyers", label: "Buyers" },
-        { to: "/admin/users/sellers", label: "Sellers" },
+        { to: "/admin/users/suppliers", label: "Sellers" },
         { to: "/admin/users/add", label: "Add User" },
       ],
     },
@@ -139,29 +144,77 @@ const AdminSidebar: React.FC = () => {
     },
   ];
 
+  // Helper function to close mobile sidebar on navigation
+  const handleNavClick = (isDropdownItem = false) => {
+    if (isDropdownItem) {
+        // Close dropdown when item is clicked
+        setOpenDropdown(null);
+    }
+    if (mobileOpen) {
+      setMobileOpen(false); // Close mobile menu after clicking an item
+    }
+  };
+
+  const currentCollapsed = window.innerWidth >= 768 ? desktopCollapsed : !mobileOpen;
+
   return (
     <>
-      {/* Floating Toggle Button */}
+      {/* 1. Mobile Menu Button (Visible on mobile, controls mobileOpen state) */}
       <button
-        onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 bg-blue-600 text-white p-2 rounded-md shadow-md hover:bg-blue-700 transition-all duration-300 md:left-6"
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-4 left-4 z-50 bg-indigo-600 text-white p-3 rounded-full shadow-lg hover:bg-indigo-700 transition-all duration-300 md:hidden"
+        aria-label="Open sidebar menu"
       >
-        <MdMenu size={22} />
+        <MdClose size={22} /> {/* Use close as the default icon on mobile for consistency */}
       </button>
 
-      {/* Sidebar */}
+      {/* 2. Mobile Backdrop (Only visible on mobile when open) */}
+      {mobileOpen && (
+        <div 
+            className="fixed inset-0 bg-black/50 z-30 md:hidden" 
+            onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* 3. Sidebar Container */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen bg-white shadow-md flex flex-col border-r border-gray-200 transition-all duration-300 ease-in-out
-          ${collapsed ? "w-20 translate-x-0" : "w-60 -translate-x-full md:translate-x-0"}
+        className={`
+          fixed top-0 left-0 z-40 h-screen bg-white shadow-xl flex flex-col border-r border-gray-200 transition-transform duration-300 ease-in-out
+          // Desktop States (md: screens)
+          md:translate-x-0
+          ${desktopCollapsed ? "w-20" : "w-64"}
+          // Mobile States (default screens)
+          ${mobileOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full"} 
         `}
       >
+        
         {/* Header */}
-        <div className="flex items-center justify-center h-16 border-b border-gray-200">
-          {!collapsed ? (
-            <h1 className="text-xl font-bold text-blue-600">Admin Panel</h1>
-          ) : (
-            <MdDashboard size={26} className="text-blue-600" />
-          )}
+        <div className="flex items-center justify-between h-16 border-b border-gray-200 p-4">
+            <div className="flex items-center">
+                {!currentCollapsed ? (
+                    <h1 className="text-xl font-bold text-indigo-600">Admin Panel</h1>
+                ) : (
+                    <MdDashboard size={26} className="text-indigo-600" />
+                )}
+            </div>
+            
+            {/* Desktop Collapse Button (Hidden on mobile) */}
+            <button
+                onClick={toggleSidebar}
+                className="hidden md:block text-gray-500 hover:text-indigo-600 transition-colors duration-200"
+                aria-label="Toggle sidebar collapse"
+            >
+                {desktopCollapsed ? <MdExpandMore size={24} className="transform rotate-90" /> : <MdExpandMore size={24} className="transform -rotate-90" />}
+            </button>
+
+            {/* Mobile Close Button (Hidden on desktop) */}
+            <button
+                onClick={() => setMobileOpen(false)}
+                className="md:hidden text-gray-500 hover:text-indigo-600 transition-colors duration-200"
+                aria-label="Close sidebar menu"
+            >
+                <MdClose size={24} />
+            </button>
         </div>
 
         {/* Navigation */}
@@ -172,15 +225,16 @@ const AdminSidebar: React.FC = () => {
                 <>
                   <button
                     onClick={() => toggleDropdown(label)}
-                    className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg font-medium text-gray-700 hover:bg-blue-100 hover:text-blue-600 transition-all duration-200 ${
-                      openDropdown === label ? "bg-blue-50 text-blue-600" : ""
+                    className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg font-medium text-gray-700 hover:bg-indigo-100 hover:text-indigo-600 transition-all duration-200 ${
+                      openDropdown === label ? "bg-indigo-50 text-indigo-600" : ""
                     }`}
+                    disabled={currentCollapsed} // Disable dropdown toggle if sidebar is collapsed
                   >
                     <div className="flex items-center gap-3">
                       {icon}
-                      {!collapsed && <span className="truncate text-sm">{label}</span>}
+                      {!currentCollapsed && <span className="truncate text-sm">{label}</span>}
                     </div>
-                    {!collapsed &&
+                    {!currentCollapsed &&
                       (openDropdown === label ? (
                         <MdExpandLess size={20} />
                       ) : (
@@ -188,9 +242,9 @@ const AdminSidebar: React.FC = () => {
                       ))}
                   </button>
 
-                  {/* Dropdown Animation */}
+                  {/* Dropdown Animation (Only visible when NOT collapsed) */}
                   <AnimatePresence>
-                    {!collapsed && openDropdown === label && (
+                    {!currentCollapsed && openDropdown === label && (
                       <motion.div
                         key={label}
                         initial={{ opacity: 0, height: 0 }}
@@ -204,11 +258,12 @@ const AdminSidebar: React.FC = () => {
                             key={item.to}
                             to={item.to}
                             end
+                            onClick={() => handleNavClick(true)} // Close mobile menu on click
                             className={({ isActive }) =>
                               `px-3 py-1.5 text-sm rounded-md transition ${
                                 isActive
-                                  ? "bg-blue-600 text-white"
-                                  : "text-gray-600 hover:bg-blue-100 hover:text-blue-700"
+                                  ? "bg-indigo-600 text-white"
+                                  : "text-gray-600 hover:bg-indigo-100 hover:text-indigo-700"
                               }`
                             }
                           >
@@ -223,16 +278,19 @@ const AdminSidebar: React.FC = () => {
                 <NavLink
                   to={to!}
                   end
+                  onClick={() => handleNavClick(false)} // Close mobile menu on click
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200 ${
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200 
+                    ${currentCollapsed ? 'justify-center w-full' : ''} 
+                    ${
                       isActive
-                        ? "bg-blue-600 text-white shadow-sm"
-                        : "text-gray-700 hover:bg-blue-100 hover:text-blue-600"
+                        ? "bg-indigo-600 text-white shadow-md"
+                        : "text-gray-700 hover:bg-indigo-100 hover:text-indigo-600"
                     }`
                   }
                 >
                   {icon}
-                  {!collapsed && <span className="truncate text-sm">{label}</span>}
+                  {!currentCollapsed && <span className="truncate text-sm">{label}</span>}
                 </NavLink>
               )}
             </div>
@@ -243,10 +301,12 @@ const AdminSidebar: React.FC = () => {
         <div className="p-4 border-t border-gray-200">
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 w-full px-3 py-2 text-red-700 bg-red-100 hover:bg-red-200 rounded-md font-medium transition-colors duration-200"
+            className={`flex items-center gap-2 w-full px-3 py-2 text-red-700 bg-red-100 hover:bg-red-200 rounded-md font-medium transition-colors duration-200
+                ${currentCollapsed ? 'justify-center' : ''}
+            `}
           >
             <MdLogout size={20} />
-            {!collapsed && <span>Logout</span>}
+            {!currentCollapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>

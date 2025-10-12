@@ -1,4 +1,3 @@
-// src/pages/admin/AdminSuppliers.tsx
 import React, { useEffect, useState, Fragment } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Plus, Trash2, Check, X, Eye, Search } from "lucide-react";
@@ -81,12 +80,10 @@ const AdminSuppliers: React.FC = () => {
       <Card className="shadow-lg">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-12 text-center text-gray-500">
-              <p>Loading suppliers...</p>
-            </div>
+            <div className="p-12 text-center text-gray-500">Loading suppliers...</div>
           ) : filteredSuppliers.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              <p>No suppliers found matching your criteria.</p>
+              No suppliers found matching your criteria.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
@@ -103,16 +100,24 @@ const AdminSuppliers: React.FC = () => {
                       {supplier.fullName}
                     </h3>
                     <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        supplier.verified ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                      }`}>
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          supplier.verified
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
                         {supplier.verified ? "Verified" : "Not Verified"}
                       </span>
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        supplier.status === "Approved" ? "bg-green-100 text-green-700" :
-                        supplier.status === "Pending" ? "bg-yellow-100 text-yellow-700" :
-                        "bg-red-100 text-red-700"
-                      }`}>
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          supplier.status === "Approved"
+                            ? "bg-green-100 text-green-700"
+                            : supplier.status === "Pending"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
                         {supplier.status}
                       </span>
                     </div>
@@ -147,11 +152,7 @@ const AdminSuppliers: React.FC = () => {
                         </Button>
                       </>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPreviewSupplier(supplier)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => setPreviewSupplier(supplier)}>
                       <Eye size={16} /> View
                     </Button>
                     <Button
@@ -170,7 +171,7 @@ const AdminSuppliers: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Supplier Preview Modal (updated styling) */}
+      {/* Supplier Preview Modal */}
       <Transition show={!!previewSupplier} as={Fragment}>
         <Dialog
           onClose={() => setPreviewSupplier(null)}
@@ -200,7 +201,7 @@ const AdminSuppliers: React.FC = () => {
             <Dialog.Panel className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
               <div className="flex justify-between items-center p-6 border-b">
                 <Dialog.Title className="text-2xl font-bold text-gray-800">
-                  Supplier Details
+                  Supplier Profile
                 </Dialog.Title>
                 <Button variant="ghost" onClick={() => setPreviewSupplier(null)}>
                   <X size={24} className="text-gray-500" />
@@ -209,42 +210,50 @@ const AdminSuppliers: React.FC = () => {
 
               {previewSupplier && (
                 <div className="p-6 overflow-y-auto space-y-6">
-                  {/* Summary & Status */}
-                  <div className="flex items-center gap-4 pb-4 border-b">
-                    <div className="flex-shrink-0">
-                      {previewSupplier.idDocument?.url ? (
-                        <img
-                          src={previewSupplier.idDocument.url}
-                          alt="ID Document Thumbnail"
-                          className="w-20 h-20 object-cover rounded-full border-2 border-gray-300"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs text-center">
-                          No ID Doc
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold">{previewSupplier.fullName}</h2>
-                      <p className="text-sm text-gray-500">{previewSupplier.shopName}</p>
-                      <div className="mt-2 flex gap-2 items-center">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          previewSupplier.status === "Approved" ? "bg-green-100 text-green-700" :
-                          previewSupplier.status === "Pending" ? "bg-yellow-100 text-yellow-700" :
-                          "bg-red-100 text-red-700"
-                        }`}>
-                          {previewSupplier.status}
-                        </span>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          previewSupplier.verified ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {previewSupplier.verified ? "Verified" : "Not Verified"}
-                        </span>
+                  {/* Avatar and Summary */}
+                  <div className="flex flex-col items-center text-center pb-4 border-b">
+                    {previewSupplier.avatar?.url ? (
+                      <img
+                        src={previewSupplier.avatar.url}
+                        alt={previewSupplier.fullName || "Supplier Avatar"}
+                        className="w-24 h-24 rounded-full border-2 border-indigo-500 object-cover mb-3"
+                      />
+                    ) : (
+                      <div className="w-24 h-24 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-2xl mb-3">
+                        {previewSupplier.fullName
+                          ? previewSupplier.fullName.charAt(0).toUpperCase()
+                          : "S"}
                       </div>
+                    )}
+                    <h2 className="text-xl font-bold text-gray-800">
+                      {previewSupplier.fullName}
+                    </h2>
+                    <p className="text-sm text-gray-500">{previewSupplier.shopName}</p>
+                    <div className="mt-2 flex gap-2 items-center justify-center">
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          previewSupplier.status === "Approved"
+                            ? "bg-green-100 text-green-700"
+                            : previewSupplier.status === "Pending"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {previewSupplier.status}
+                      </span>
+                      <span
+                        className={`px-2 py-1 text-xs font-medium rounded-full ${
+                          previewSupplier.verified
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {previewSupplier.verified ? "Verified" : "Not Verified"}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Information Sections */}
+                  {/* Info Sections */}
                   <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="font-semibold text-lg text-gray-700 mb-3">
@@ -257,6 +266,7 @@ const AdminSuppliers: React.FC = () => {
                         <p><strong>Seller Type:</strong> {previewSupplier.sellerType}</p>
                       </div>
                     </div>
+
                     <div>
                       <h3 className="font-semibold text-lg text-gray-700 mb-3">
                         Business Details
@@ -271,13 +281,21 @@ const AdminSuppliers: React.FC = () => {
                         )}
                         {previewSupplier.businessLicense?.url && (
                           <p>
-                            <strong>Business License:</strong> <a href={previewSupplier.businessLicense.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">View Document</a>
+                            <strong>Business License:</strong>{" "}
+                            <a
+                              href={previewSupplier.businessLicense.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              View Document
+                            </a>
                           </p>
                         )}
                       </div>
                     </div>
                   </section>
-                  
+
                   <section className="mt-6">
                     <h3 className="font-semibold text-lg text-gray-700 mb-3">
                       Settlement Info

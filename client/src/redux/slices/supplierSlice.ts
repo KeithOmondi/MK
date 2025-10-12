@@ -11,6 +11,7 @@ export interface SupplierUser {
   name: string;
   email: string;
   role: string;
+  avatar?: { url: string; publicId: string };
 }
 
 export interface SupplierDocument {

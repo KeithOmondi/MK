@@ -122,7 +122,7 @@ const initialState: ProductState = {
   total: 0,
   searchQuery: "",
   lastFetchedHomepage: undefined,
-};
+}; 
 
 /* ======================================================
    🧰 HELPERS

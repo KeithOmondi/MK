@@ -13,7 +13,9 @@ import reviewReducer from "./slices/reviewSlice"
 import adminDashboardReducer from "./slices/adminDashboardSlice"
 import addressReducer from "./slices/addressSlice";
 import offersReducer from "./slices/offersSlice";
-import wishlistReducer from "./slices/wishlistSlice"
+import wishlistReducer from "./slices/wishlistSlice";
+import reportsReducer from "./slices/reportSlice"
+import disputesReducer from "./slices/disputesSlice"
 
 
 export const store = configureStore({
@@ -33,6 +35,8 @@ export const store = configureStore({
      adminDashboard: adminDashboardReducer,
      address: addressReducer,
      offers: offersReducer,
+     reports: reportsReducer,
+     disputes: disputesReducer
      
   },
 });

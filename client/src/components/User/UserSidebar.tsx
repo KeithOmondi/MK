@@ -95,6 +95,7 @@ const UserSidebar: React.FC = () => {
       links: [
         { to: "/user/messages", label: "Messages", icon: <MdChat size={20} /> },
         { to: "/user/support", label: "Help & Support", icon: <MdOutlineSupportAgent size={20} /> },
+        { to: "/user/disputes", label: "My Disputes", icon: <MdReceipt size={20} /> },
       ],
     },
   ];

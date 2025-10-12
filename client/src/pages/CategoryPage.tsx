@@ -1,8 +1,9 @@
+// src/pages/CategoryPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { motion } from "framer-motion";
-import { FaShoppingCart, FaHeart, FaBolt, FaStore } from "react-icons/fa";
+import { FaShoppingCart, FaHeart, FaBolt, FaStore, FaChevronRight } from "react-icons/fa";
 import toast, { Toaster } from "react-hot-toast";
 import { Helmet } from "react-helmet-async";
 
@@ -30,40 +31,32 @@ import {
 } from "../redux/slices/wishlistSlice";
 import ProductModal from "./ProductModal";
 
+/* ─────────────── CATEGORY PAGE ─────────────── */
 export default function CategoryPage() {
-  const { category, subcategory } = useParams<{
-    category: string;
-    subcategory?: string;
-  }>();
-
+  const { category, subcategory } = useParams<{ category: string; subcategory?: string }>();
   const dispatch = useDispatch<AppDispatch>();
 
   const products = useSelector(selectProducts) ?? [];
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
-  const categories =
-    useSelector((state: RootState) => selectCategories(state)) ?? [];
+  const categories = useSelector((state: RootState) => selectCategories(state)) ?? [];
   const wishlist = useSelector(selectWishlistItems) ?? [];
 
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
   const [inStockOnly, setInStockOnly] = useState(false);
-  const [selectedVariants, setSelectedVariants] = useState<
-    Record<string, ProductVariant>
-  >({});
+  const [selectedVariants, setSelectedVariants] = useState<Record<string, ProductVariant>>({});
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
-  /* ─────────── LOAD DATA ─────────── */
+  /* ─────────────── LOAD DATA ─────────────── */
   useEffect(() => {
     if (!categories.length) dispatch(fetchCategories());
   }, [dispatch, categories.length]);
 
   const categoryId = useMemo(() => {
     if (!categories.length) return undefined;
-    const sub = subcategory
-      ? categories.find((c) => c.slug === subcategory)
-      : undefined;
     const main = categories.find((c) => c.slug === category);
+    const sub = subcategory ? categories.find((c) => c.slug === subcategory) : undefined;
     return sub?._id || main?._id;
   }, [categories, category, subcategory]);
 
@@ -71,17 +64,14 @@ export default function CategoryPage() {
     if (categoryId) dispatch(fetchProducts({ category: categoryId }));
   }, [dispatch, categoryId]);
 
-  /* ─────────── FILTERING ─────────── */
+  /* ─────────────── FILTERING ─────────────── */
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
       const variant =
-        selectedVariants[p._id] ??
-        p.variants?.[0] ??
-        { price: p.price ?? 0, stock: p.stock ?? 0 };
+        selectedVariants[p._id] ?? p.variants?.[0] ?? { price: p.price ?? 0, stock: p.stock ?? 0 };
       const matchesBrand =
         selectedBrands.length === 0 || selectedBrands.includes(p.brand ?? "");
-      const matchesPrice =
-        variant.price >= priceRange[0] && variant.price <= priceRange[1];
+      const matchesPrice = variant.price >= priceRange[0] && variant.price <= priceRange[1];
       const matchesStock = !inStockOnly || variant.stock > 0;
       return matchesBrand && matchesPrice && matchesStock;
     });
@@ -91,7 +81,7 @@ export default function CategoryPage() {
     new Set(products.map((p) => p.brand ?? "").filter(Boolean))
   );
 
-  /* ─────────── HANDLERS ─────────── */
+  /* ─────────────── HANDLERS ─────────────── */
   const toggleBrand = (brand: string) =>
     setSelectedBrands((prev) =>
       prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]
@@ -161,41 +151,56 @@ export default function CategoryPage() {
     if (error) toast.error(error);
   }, [error]);
 
-  const pageTitle = subcategory
-    ? `${subcategory.replace("-", " ")} in ${category} | ZenMart`
-    : `${category} | ZenMart`;
-  const pageDescription = `Explore high-quality ${subcategory || category} products at ZenMart. Compare prices, brands, and deals from trusted sellers.`;
-  const canonicalUrl = `https://www.zenmart.com/${category}${
-    subcategory ? `/${subcategory}` : ""
-  }`;
+  /* ─────────────── BREADCRUMB TITLE ─────────────── */
+/* ─────────────── BREADCRUMB TITLE ─────────────── */
+const formatTitle = () => {
+  if (!category) return "";
 
-  /* ─────────── RENDER ─────────── */
+  const clean = (str: string) =>
+    str.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  if (subcategory) {
+    const catName = clean(category);
+    const subName = clean(subcategory);
+
+    // 🧠 Avoid repeating words if subcategory starts with category
+    if (subName.toLowerCase().startsWith(catName.toLowerCase())) {
+      return `${catName} › ${subName
+        .replace(new RegExp(`^${catName}`, "i"), "")
+        .trim()}`;
+    }
+
+    return `${catName} › ${subName}`;
+  }
+
+  return clean(category);
+};
+
+
+
+  const capitalize = (str: string) =>
+    str.replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const pageTitle = `${formatTitle()} | MKSTORE`;
+  const pageDescription = `Shop ${subcategory || category} products at ZenMart. Discover the best brands, prices, and deals online.`;
+  const canonicalUrl = `https://www.zenmart.com/${category}${subcategory ? `/${subcategory}` : ""}`;
+
+  /* ─────────────── RENDER ─────────────── */
   return (
     <>
       <Helmet>
         <title>{pageTitle}</title>
         <meta name="description" content={pageDescription} />
-        <meta
-          name="keywords"
-          content={`${category}, ${subcategory || ""}, online shopping, ZenMart, best deals, buy ${category} online`}
-        />
         <link rel="canonical" href={canonicalUrl} />
-        <meta property="og:title" content={pageTitle} />
-        <meta property="og:description" content={pageDescription} />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content={canonicalUrl} />
       </Helmet>
 
       <Toaster position="top-right" />
       <Header />
 
-      {/* ─────────── MAIN SECTION ─────────── */}
       <section className="container mx-auto p-6 md:p-10 grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* SIDEBAR FILTERS */}
+        {/* ─────────── SIDEBAR ─────────── */}
         <aside className="md:col-span-1 bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6 md:sticky md:top-24 h-fit">
-          <h2 className="text-xl font-bold text-gray-800 border-b pb-3">
-            Filters
-          </h2>
+          <h2 className="text-xl font-bold text-gray-800 border-b pb-3">Filters</h2>
 
           {/* Brand Filter */}
           <div>
@@ -229,9 +234,7 @@ export default function CategoryPage() {
               <input
                 type="number"
                 value={priceRange[0]}
-                onChange={(e) =>
-                  setPriceRange([+e.target.value, priceRange[1]])
-                }
+                onChange={(e) => setPriceRange([+e.target.value, priceRange[1]])}
                 className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500"
                 placeholder="Min"
               />
@@ -239,16 +242,14 @@ export default function CategoryPage() {
               <input
                 type="number"
                 value={priceRange[1]}
-                onChange={(e) =>
-                  setPriceRange([priceRange[0], +e.target.value])
-                }
+                onChange={(e) => setPriceRange([priceRange[0], +e.target.value])}
                 className="w-1/2 border border-gray-300 rounded-md p-2 text-sm focus:ring-green-500"
                 placeholder="Max"
               />
             </div>
           </div>
 
-          {/* Stock */}
+          {/* Stock Only */}
           <label className="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"
@@ -260,29 +261,22 @@ export default function CategoryPage() {
           </label>
         </aside>
 
-        {/* PRODUCT GRID */}
+        {/* ─────────── PRODUCTS ─────────── */}
         <div className="md:col-span-3">
-          <h1 className="text-3xl font-extrabold text-gray-900 capitalize mb-6 flex items-center gap-2">
+          {/* Breadcrumb / Title */}
+          <h1 className="text-1xl font-bold text-gray-900 capitalize mb-6 flex items-center gap-2">
             <FaStore className="text-green-600" />
-            {subcategory
-              ? `${subcategory.replace("-", " ")} in ${category}`
-              : category}
+            {formatTitle()}
           </h1>
 
-          {loading && (
-            <p className="text-gray-500 text-lg animate-pulse">
-              Loading products...
-            </p>
-          )}
+          {loading && <p className="text-gray-500 text-lg animate-pulse">Loading products...</p>}
           {!loading && filteredProducts.length === 0 && (
             <p className="text-gray-500 text-lg">No products found.</p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => {
-              const inWishlist = wishlist.some(
-                (w) => w.productId === product._id
-              );
+              const inWishlist = wishlist.some((w) => w.productId === product._id);
               const variant =
                 selectedVariants[product._id] ??
                 product.variants?.[0] ?? {
@@ -308,16 +302,13 @@ export default function CategoryPage() {
                     </span>
                   )}
 
+                  {/* Wishlist + Cart Buttons */}
                   <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleToggleWishlist(product)}
-                      title={
-                        inWishlist ? "Remove from Wishlist" : "Add to Wishlist"
-                      }
+                      title={inWishlist ? "Remove from Wishlist" : "Add to Wishlist"}
                       className={`p-2 rounded-full bg-white shadow ${
-                        inWishlist
-                          ? "text-red-500"
-                          : "text-gray-600 hover:text-red-500"
+                        inWishlist ? "text-red-500" : "text-gray-600 hover:text-red-500"
                       }`}
                     >
                       <FaHeart size={14} />
@@ -331,6 +322,7 @@ export default function CategoryPage() {
                     </button>
                   </div>
 
+                  {/* Product Image */}
                   <img
                     src={product.images?.[0]?.url || "/assets/placeholder.png"}
                     alt={product.name}
@@ -338,6 +330,7 @@ export default function CategoryPage() {
                     onClick={() => setSelectedProduct(product)}
                   />
 
+                  {/* Product Info */}
                   <div className="p-4 space-y-1">
                     <h2 className="font-semibold text-base text-gray-800 truncate">
                       {product.name}
@@ -347,9 +340,7 @@ export default function CategoryPage() {
                       <select
                         value={variant._id}
                         onChange={(e) => {
-                          const selected = product.variants?.find(
-                            (v) => v._id === e.target.value
-                          );
+                          const selected = product.variants?.find((v) => v._id === e.target.value);
                           if (selected) handleVariantChange(product._id, selected);
                         }}
                         className="border border-gray-300 rounded-md p-1 text-sm w-full"
@@ -375,11 +366,7 @@ export default function CategoryPage() {
 
                     <div className="flex justify-between items-center text-xs text-gray-500 mt-1">
                       <p>SKU: {sku}</p>
-                      <p>
-                        {variant.stock > 0
-                          ? `${variant.stock} left`
-                          : "Out of stock"}
-                      </p>
+                      <p>{variant.stock > 0 ? `${variant.stock} left` : "Out of stock"}</p>
                     </div>
                   </div>
                 </motion.div>
@@ -389,10 +376,7 @@ export default function CategoryPage() {
         </div>
 
         {selectedProduct && (
-          <ProductModal
-            product={selectedProduct}
-            onClose={() => setSelectedProduct(null)}
-          />
+          <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
         )}
       </section>
 

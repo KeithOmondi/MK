@@ -222,17 +222,18 @@ export const cancelOrder = createAsyncThunk<Order, string>(
 );
 
 // REQUEST REFUND
-export const requestRefund = createAsyncThunk<Order, string>(
+export const requestRefund = createAsyncThunk<Order, { orderId: string; reason: string }>(
   "orders/requestRefund",
-  async (orderId, { rejectWithValue }) => {
+  async ({ orderId, reason }, { rejectWithValue }) => {
     try {
-      const { data } = await api.post(`/orders/request/${orderId}/refund`);
+      const { data } = await api.post(`/orders/request/${orderId}/refund`, { reason });
       return data.data as Order;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
     }
   }
 );
+
 
 // UPDATE REFUND STATUS
 export const updateRefundStatus = createAsyncThunk<

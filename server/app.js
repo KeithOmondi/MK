@@ -31,6 +31,8 @@ import reviewRouter from "./routes/reviewRouter.js";
 import adminRouter from "./routes/adminRouter.js";
 import addressRouter from "./routes/addressRouter.js";
 import offersRouter from "./routes/offersRouter.js";
+import reportRouter from "./routes/reportRouter.js"
+import disputeRouter from "./routes/disputeRouter.js"
 import fileUpload from "express-fileupload";
 
 dotenv.config({ path: "./config/.env" });
@@ -87,6 +89,8 @@ app.use("/api/v1/reviews", reviewRouter);
 app.use("/api/v1/admin", adminRouter);
 app.use("/api/v1/addresses", addressRouter);
 app.use("/api/v1/offers", offersRouter);
+app.use("/api/v1/reports", reportRouter);
+app.use("/api/v1/disputes", disputeRouter);
 
 // ✅ Global error handler
 app.use(errorMiddleware);

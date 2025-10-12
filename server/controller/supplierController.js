@@ -5,6 +5,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { sendEmail } from "../utils/sendMail.js";
 import { User } from "../models/userModel.js";
+import mongoose from "mongoose";
 
 // -------------------------
 // Register Supplier (Final Step)
@@ -268,17 +269,23 @@ export const deleteSupplier = asyncHandler(async (req, res) => {
 // Get Supplier by ID
 // -------------------------
 export const getSupplierById = asyncHandler(async (req, res) => {
-  const supplier = await Supplier.findById(req.params.id)
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: "Invalid supplier ID format" });
+  }
+
+  const supplier = await Supplier.findById(id)
     .populate("user", "name email role")
     .populate("products", "name price stock");
 
   if (!supplier) {
-    res.status(404);
-    throw new Error("Supplier not found");
+    return res.status(404).json({ success: false, message: "Supplier not found" });
   }
 
   res.status(200).json({ success: true, data: supplier });
 });
+
 
 // -------------------------
 // Get All Suppliers (Admin)
