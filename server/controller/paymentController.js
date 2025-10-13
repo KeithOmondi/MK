@@ -1,12 +1,11 @@
 import asyncHandler from "express-async-handler";
 import Order from "../models/Order.js";
 import PendingPayment from "../models/PendingPayment.js";
+import Payment from "../models/paymentModel.js"
+import User from "../models/userModel.js";
+import Reward from "../models/RewardModel.js";
 import axios from "axios";
 import moment from "moment";
-import Reward from "../models/RewardModel.js"
-
-
-
 
 const POINTS_RATE = 1; // 1 point per 1 currency unit paid
 
@@ -29,7 +28,7 @@ const getAccessToken = async () => {
   return data.access_token;
 };
 
-/* ------------------------ INITIATE STK PUSH ------------------------ */
+/* ------------------------ INITIATE ORDER PAYMENT ------------------------ */
 export const initiateLipPay = asyncHandler(async (req, res) => {
   const { orderId, phoneNumber } = req.body;
   if (!orderId || !phoneNumber) {
@@ -42,27 +41,18 @@ export const initiateLipPay = asyncHandler(async (req, res) => {
   }
 
   // ✅ Sanitize phone
-let sanitizedPhone = phoneNumber.replace(/\D/g, ""); // remove non-digits
+  let sanitizedPhone = phoneNumber.replace(/\D/g, "");
+  if (sanitizedPhone.startsWith("0")) {
+    sanitizedPhone = "254" + sanitizedPhone.slice(1);
+  } else if (sanitizedPhone.startsWith("7") || sanitizedPhone.startsWith("1")) {
+    sanitizedPhone = "254" + sanitizedPhone;
+  } else if (!sanitizedPhone.startsWith("254")) {
+    return res.status(400).json({ success: false, message: "Invalid phone number format" });
+  }
 
-if (sanitizedPhone.startsWith("0")) {
-  // 07XXXXXXXX or 01XXXXXXXX
-  sanitizedPhone = "254" + sanitizedPhone.slice(1);
-} else if (sanitizedPhone.startsWith("7") || sanitizedPhone.startsWith("1")) {
-  // 7XXXXXXXX or 1XXXXXXXX
-  sanitizedPhone = "254" + sanitizedPhone;
-} else if (!sanitizedPhone.startsWith("254")) {
-  return res
-    .status(400)
-    .json({ success: false, message: "Invalid phone number format" });
-}
-
-// ✅ Final validation (must be 12 digits, start with 2547 or 2541)
-if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
-  return res
-    .status(400)
-    .json({ success: false, message: "Invalid Safaricom phone number" });
-}
-
+  if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
+    return res.status(400).json({ success: false, message: "Invalid Safaricom phone number" });
+  }
 
   const { LIPAPAY_SHORTCODE, LIPAPAY_PASSKEY, LIPAPAY_CALLBACK_URL } = process.env;
   if (!LIPAPAY_SHORTCODE || !LIPAPAY_PASSKEY || !LIPAPAY_CALLBACK_URL) {
@@ -116,12 +106,10 @@ if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) {
   }
 });
 
-
+/* ------------------------ LIPAY CALLBACK ------------------------ */
 export const lipPayCallback = asyncHandler(async (req, res) => {
   const { Body } = req.body;
-  if (!Body?.stkCallback) {
-    return res.status(400).send("Invalid callback data");
-  }
+  if (!Body?.stkCallback) return res.status(400).send("Invalid callback data");
 
   const callback = Body.stkCallback;
   const pending = await PendingPayment.findOne({
@@ -134,7 +122,6 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
   }
 
   if (callback.ResultCode === 0) {
-    // ✅ Success
     pending.order.paymentStatus = "paid";
     pending.order.status = "Processing";
     pending.order.transactionId = callback.CheckoutRequestID;
@@ -144,26 +131,18 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
     pending.status = "completed";
     await pending.save();
 
-    // 🎁 Award reward points
     try {
       const pointsEarned = Math.floor(pending.order.totalAmount * POINTS_RATE);
 
       let reward = await Reward.findOne({ user: pending.order.user });
       if (!reward) {
-        reward = await Reward.create({
-          user: pending.order.user,
-          points: 0,
-          history: [],
-        });
+        reward = await Reward.create({ user: pending.order.user, points: 0, history: [] });
       }
 
       reward.points += pointsEarned;
-      reward.history.push({
-        order: pending.order._id,
-        pointsEarned,
-      });
-
+      reward.history.push({ order: pending.order._id, pointsEarned });
       await reward.save();
+
       console.log(`✅ ${pointsEarned} points awarded to user ${pending.order.user}`);
     } catch (rewardError) {
       console.error("❌ Failed to assign reward points:", rewardError.message);
@@ -171,7 +150,6 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
 
     console.log(`💰 Payment completed for Order ${pending.order._id}`);
   } else {
-    // ❌ Failed
     pending.order.paymentStatus = "failed";
     pending.order.status = "Pending";
     await pending.order.save();
@@ -188,15 +166,12 @@ export const lipPayCallback = asyncHandler(async (req, res) => {
   res.json({ success: true });
 });
 
-
 /* ------------------------ CHECK PAYMENT STATUS ------------------------ */
 export const getPaymentStatus = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
   const order = await Order.findById(orderId);
 
-  if (!order) {
-    return res.status(404).json({ success: false, message: "Order not found" });
-  }
+  if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
   res.json({
     success: true,
@@ -206,8 +181,7 @@ export const getPaymentStatus = asyncHandler(async (req, res) => {
   });
 });
 
-
-// POST /api/admin/release/:orderId
+/* ------------------------ ADMIN RELEASE ESCROW ------------------------ */
 export const adminReleaseEscrow = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
   const order = await Order.findById(orderId).populate("supplier");
@@ -226,4 +200,126 @@ export const adminReleaseEscrow = asyncHandler(async (req, res) => {
   await order.save();
 
   res.json({ success: true, message: "Escrow released successfully", order });
+});
+
+/* ------------------------ WALLET DEPOSIT ------------------------ */
+export const initiateWalletDeposit = asyncHandler(async (req, res) => {
+  const { amount, phoneNumber } = req.body;
+  const userId = req.user._id;
+
+  if (!amount || amount <= 0) return res.status(400).json({ success: false, message: "Invalid amount" });
+  if (!phoneNumber) return res.status(400).json({ success: false, message: "Phone number required" });
+
+  let sanitizedPhone = phoneNumber.replace(/\D/g, "").replace(/^0/, "254");
+  if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) return res.status(400).json({ success: false, message: "Invalid Safaricom phone number" });
+
+  const timestamp = moment().format("YYYYMMDDHHmmss");
+  const { LIPAPAY_SHORTCODE, LIPAPAY_PASSKEY, LIPAPAY_CALLBACK_URL } = process.env;
+  const password = Buffer.from(LIPAPAY_SHORTCODE + LIPAPAY_PASSKEY + timestamp).toString("base64");
+
+  try {
+    const accessToken = await getAccessToken();
+
+    const payload = {
+      BusinessShortCode: LIPAPAY_SHORTCODE,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: amount,
+      PartyA: sanitizedPhone,
+      PartyB: LIPAPAY_SHORTCODE,
+      PhoneNumber: sanitizedPhone,
+      CallBackURL: `${LIPAPAY_CALLBACK_URL}/wallet`,
+      AccountReference: `WALLET_${userId}`,
+      TransactionDesc: "Wallet deposit",
+    };
+
+    const { data } = await axios.post(
+      "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
+      payload,
+      { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } }
+    );
+
+    if (data.CheckoutRequestID) {
+      await Payment.create({
+        user: userId,
+        amount,
+        method: "mpesa",
+        status: "pending",
+        walletType: "deposit",
+        referenceDetails: sanitizedPhone,
+        transactionId: data.CheckoutRequestID,
+      });
+    }
+
+    res.json({ success: true, message: "Complete the STK push to deposit funds", transactionId: data.CheckoutRequestID, amount });
+  } catch (err) {
+    console.error(err.response?.data || err.message);
+    res.status(500).json({ success: false, message: "Failed to initiate deposit" });
+  }
+});
+
+/* ------------------------ WALLET CALLBACK ------------------------ */
+export const walletCallback = asyncHandler(async (req, res) => {
+  const { Body } = req.body;
+  if (!Body?.stkCallback) return res.status(400).send("Invalid callback data");
+
+  const callback = Body.stkCallback;
+  const payment = await Payment.findOne({ transactionId: callback.CheckoutRequestID });
+
+  if (!payment) return res.status(404).send("Payment not found");
+
+  if (callback.ResultCode === 0) {
+    payment.status = "completed";
+    await payment.save();
+
+    const user = await User.findById(payment.user);
+    user.walletBalance = (user.walletBalance || 0) + payment.amount;
+    await user.save();
+
+    console.log(`💰 Wallet deposit successful for user ${user._id}`);
+  } else {
+    payment.status = "failed";
+    payment.failedReason = callback.ResultDesc || "Payment failed";
+    await payment.save();
+
+    console.warn(`⚠️ Wallet deposit failed: ${callback.ResultDesc}`);
+  }
+
+  res.json({ success: true });
+});
+
+/* ------------------------ WALLET WITHDRAW ------------------------ */
+export const withdrawFunds = asyncHandler(async (req, res) => {
+  const { amount, phoneNumber } = req.body;
+  const userId = req.user._id;
+
+  if (!amount || amount <= 0) return res.status(400).json({ success: false, message: "Invalid amount" });
+
+  const user = await User.findById(userId);
+  if (!user || (user.walletBalance || 0) < amount) return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
+
+  let sanitizedPhone = phoneNumber.replace(/\D/g, "").replace(/^0/, "254");
+  if (!/^254(7|1)\d{8}$/.test(sanitizedPhone)) return res.status(400).json({ success: false, message: "Invalid Safaricom phone number" });
+
+  // TODO: Integrate M-Pesa B2C payout API
+  const success = true; // Simulate for now
+
+  if (success) {
+    user.walletBalance -= amount;
+    await user.save();
+
+    await Payment.create({
+      user: userId,
+      amount,
+      method: "mpesa",
+      status: "completed",
+      walletType: "withdrawal",
+      referenceDetails: sanitizedPhone,
+    });
+
+    res.json({ success: true, message: "Withdrawal successful" });
+  } else {
+    res.status(500).json({ success: false, message: "Withdrawal failed" });
+  }
 });

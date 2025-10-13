@@ -2,18 +2,22 @@
 import { catchAsyncErrors } from "../middlewares/catchAsyncErrors.js";
 import ErrorHandler from "../middlewares/errorMiddlewares.js";
 import { User } from "../models/userModel.js";
-import validator from "validator";
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
+import Supplier from "../models/Supplier.js";
 import { sendToken } from "../utils/sendToken.js";
 import { sendEmail } from "../utils/sendMail.js";
 import { generateOTP } from "../utils/generateOTP.js";
-import { generateLoginAlertEmailTemplate, generatePasswordChangeEmailTemplate } from "../utils/emailTemplates.js";
-import Supplier from "../models/Supplier.js";
+import {
+  generateLoginAlertEmailTemplate,
+  generatePasswordChangeEmailTemplate,
+} from "../utils/emailTemplates.js";
+import validator from "validator";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import cloudinary from "cloudinary";
 
-/* -------------------------
-   Helpers
-------------------------- */
+/* =========================================================
+   Helper: Validate password strength
+========================================================= */
 const validatePassword = (password) => {
   const isStrong = validator.isStrongPassword(password, {
     minLength: 8,
@@ -22,10 +26,11 @@ const validatePassword = (password) => {
     minNumbers: 1,
     minSymbols: 1,
   });
+
   if (!isStrong) {
     throw new ErrorHandler(
-      400,
-      "Password must be at least 8 characters long and include uppercase, lowercase, number, and symbol."
+      "Password must be at least 8 characters long and include uppercase, lowercase, number, and symbol.",
+      400
     );
   }
 };
@@ -35,28 +40,25 @@ const validatePassword = (password) => {
 ========================================================= */
 export const register = catchAsyncErrors(async (req, res, next) => {
   const { name, email, password } = req.body;
-
   if (!name || !email || !password) {
-    return next(new ErrorHandler("Please provide all required fields", 400));
+    return next(new ErrorHandler("Please provide all required fields.", 400));
   }
 
-  // Check if user exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    return next(new ErrorHandler("User already exists", 400));
+    return next(new ErrorHandler("User already exists.", 400));
   }
 
   let avatarData = {};
-  if (req.files && req.files.avatar) {
+  if (req.files?.avatar) {
     const { avatar } = req.files;
     const allowedFormats = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-
     if (!allowedFormats.includes(avatar.mimetype)) {
-      return next(new ErrorHandler("Please upload a valid image format", 400));
+      return next(new ErrorHandler("Invalid image format.", 400));
     }
 
     const uploadRes = await cloudinary.uploader.upload(avatar.tempFilePath, {
-      folder: "MKSTORE",
+      folder: "MKSTORE/avatars",
     });
 
     avatarData = {
@@ -65,25 +67,22 @@ export const register = catchAsyncErrors(async (req, res, next) => {
     };
   }
 
-  // ✅ Generate OTP
   const otp = generateOTP();
 
   const user = await User.create({
     name,
-    email,
-    password, // pre-save hook will hash
+    email: email.toLowerCase().trim(),
+    password,
     avatar: avatarData,
     accountVerified: false,
     verificationCode: otp,
     verificationCodeExpiry: Date.now() + 15 * 60 * 1000,
   });
 
-  // ✅ Send OTP
   await sendEmail({
-    email,
+    to: email,
     subject: "Verify your account - MKSTORE",
-    html: `<p>Hello ${name},</p>
-           <p>Your OTP is <b>${otp}</b>. It will expire in 15 minutes.</p>`,
+    html: `<p>Hello ${name},</p><p>Your OTP is <b>${otp}</b>. It expires in 15 minutes.</p>`,
   });
 
   res.status(201).json({
@@ -92,6 +91,7 @@ export const register = catchAsyncErrors(async (req, res, next) => {
     user: { id: user._id, email: user.email },
   });
 });
+
 
 /* =========================================================
    ✅ Verify OTP
@@ -103,11 +103,11 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
   if (!user) return next(new ErrorHandler("User not found", 404));
 
   if (!user.verificationCode || user.verificationCode !== otp) {
-    return next(new ErrorHandler("Invalid OTP", 400));
+    return next(new ErrorHandler("Invalid OTP.", 400));
   }
 
   if (user.verificationCodeExpiry < Date.now()) {
-    return next(new ErrorHandler("OTP expired", 400));
+    return next(new ErrorHandler("OTP expired.", 400));
   }
 
   user.accountVerified = true;
@@ -115,7 +115,7 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
   user.verificationCodeExpiry = undefined;
   await user.save({ validateBeforeSave: false });
 
-  return sendToken(user, 200, "Account verified successfully", res);
+  await sendToken(user, 200, "Account verified successfully.", res);
 });
 
 /* =========================================================
@@ -123,13 +123,9 @@ export const verifyOTP = catchAsyncErrors(async (req, res, next) => {
 ========================================================= */
 export const resendOTP = catchAsyncErrors(async (req, res, next) => {
   const { email } = req.body;
-
   const user = await User.findOne({ email });
-  if (!user) return next(new ErrorHandler("User not found", 404));
-
-  if (user.accountVerified) {
-    return next(new ErrorHandler("Account already verified", 400));
-  }
+  if (!user) return next(new ErrorHandler("User not found.", 404));
+  if (user.accountVerified) return next(new ErrorHandler("Account already verified.", 400));
 
   const otp = generateOTP();
   user.verificationCode = otp;
@@ -139,60 +135,34 @@ export const resendOTP = catchAsyncErrors(async (req, res, next) => {
   await sendEmail({
     to: email,
     subject: "Resend OTP - MKSTORE",
-    html: `<p>Hello ${user.name},</p>
-           <p>Your new OTP is <b>${otp}</b>. It will expire in 15 minutes.</p>`,
+    html: `<p>Hello ${user.name},</p><p>Your new OTP is <b>${otp}</b>. It expires in 15 minutes.</p>`,
   });
 
-  res.status(200).json({
-    success: true,
-    message: "OTP resent successfully.",
-  });
+  res.status(200).json({ success: true, message: "OTP resent successfully." });
 });
 
 /* =========================================================
    ✅ Login
 ========================================================= */
-const login = catchAsyncErrors(async (req, res, next) => {
+export const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
   if (!email || !password)
-    return next(new ErrorHandler(400, "Email and password are required."));
+    return next(new ErrorHandler("Email and password are required.", 400));
 
   const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
     "+password +loginAttempts +lockUntil +refreshToken"
   );
-  if (!user) return next(new ErrorHandler(401, "Invalid email or password."));
+  if (!user) return next(new ErrorHandler("Invalid email or password.", 401));
 
-  // ==========================
-  // ✅ Supplier extra checks
-  // ==========================
   if (user.role === "Supplier") {
     const supplier = await Supplier.findOne({ user: user._id });
-
-    if (!supplier) {
-      return next(new ErrorHandler(403, "Supplier profile not found."));
-    }
-
-    // Block if OTP not verified
-    if (!supplier.verified) {
-      return next(
-        new ErrorHandler(403, "Please verify your email with the OTP sent.")
-      );
-    }
-
-    // Block if admin has not yet approved
-    if (supplier.status !== "Approved") {
-      return next(
-        new ErrorHandler(
-          403,
-          "Your supplier account is awaiting admin approval."
-        )
-      );
-    }
+    if (!supplier) return next(new ErrorHandler("Supplier profile not found.", 403));
+    if (!supplier.verified)
+      return next(new ErrorHandler("Please verify your email with the OTP sent.", 403));
+    if (supplier.status !== "Approved")
+      return next(new ErrorHandler("Your supplier account is awaiting admin approval.", 403));
   }
 
-  // ==========================
-  // Account lock check
-  // ==========================
   if (user.isLocked) {
     const unlockTime = Math.ceil((user.lockUntil - Date.now()) / 60000);
     return res.status(423).json({
@@ -202,9 +172,6 @@ const login = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
-  // ==========================
-  // Password check
-  // ==========================
   const isValid = await user.comparePassword(password);
   if (!isValid) {
     await user.incrementLoginAttempts();
@@ -212,15 +179,12 @@ const login = catchAsyncErrors(async (req, res, next) => {
     return res.status(401).json({
       success: false,
       attemptsLeft,
-      message: `Invalid email or password. You have ${attemptsLeft} attempt(s) remaining.`,
+      message: `Invalid email or password. ${attemptsLeft} attempt(s) remaining.`,
     });
   }
 
   await user.resetLoginAttempts();
 
-  // ==========================
-  // Login history + alerts
-  // ==========================
   const ip =
     req.headers["x-forwarded-for"]?.split(",")[0] ||
     req.connection.remoteAddress ||
@@ -229,23 +193,15 @@ const login = catchAsyncErrors(async (req, res, next) => {
   const userAgent = req.headers["user-agent"] || "Unknown device";
   const time = new Date().toLocaleString();
 
-  user.loginHistory = user.loginHistory || [];
-  user.loginHistory.push({ ip, userAgent, time });
-  if (user.loginHistory.length > 10) {
-    user.loginHistory = user.loginHistory.slice(-10);
-  }
+  user.loginHistory = [...(user.loginHistory || []), { ip, userAgent, time }].slice(-10);
   await user.save({ validateBeforeSave: false });
 
-  const html = generateLoginAlertEmailTemplate(user.name, ip, userAgent, time);
   await sendEmail({
     email: user.email,
     subject: "New Login Detected",
-    html,
+    html: generateLoginAlertEmailTemplate(user.name, ip, userAgent, time),
   });
 
-  // ==========================
-  // Send tokens
-  // ==========================
   await sendToken(user, 200, "Login successful.", res);
 });
 
@@ -256,95 +212,79 @@ const login = catchAsyncErrors(async (req, res, next) => {
 export const forgotPassword = catchAsyncErrors(async (req, res, next) => {
   const { email } = req.body;
   const user = await User.findOne({ email });
-
-  if (!user) return next(new ErrorHandler("User not found", 404));
+  if (!user) return next(new ErrorHandler("User not found.", 404));
 
   const resetToken = crypto.randomBytes(32).toString("hex");
   user.resetPasswordToken = crypto.createHash("sha256").update(resetToken).digest("hex");
   user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
-
   await user.save({ validateBeforeSave: false });
 
   const resetUrl = `${process.env.FRONTEND_URL}/password/reset/${resetToken}`;
-
   await sendEmail({
     to: user.email,
     subject: "Password Reset - MKSTORE",
-    html: `<p>Hello ${user.name},</p>
-           <p>Click below to reset your password:</p>
-           <a href="${resetUrl}">${resetUrl}</a>`,
+    html: `<p>Hello ${user.name},</p><p>Click below to reset your password:</p><a href="${resetUrl}">${resetUrl}</a>`,
   });
 
-  res.status(200).json({
-    success: true,
-    message: "Password reset link sent to email",
-  });
+  res.status(200).json({ success: true, message: "Password reset link sent to email." });
 });
+
 
 /* =========================================================
    ✅ Reset Password
 ========================================================= */
 export const resetPassword = catchAsyncErrors(async (req, res, next) => {
-  const resetPasswordToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
-
+  const tokenHash = crypto.createHash("sha256").update(req.params.token).digest("hex");
   const user = await User.findOne({
-    resetPasswordToken,
+    resetPasswordToken: tokenHash,
     resetPasswordExpire: { $gt: Date.now() },
   });
+  if (!user)
+    return next(new ErrorHandler("Password reset token is invalid or expired.", 400));
 
-  if (!user) {
-    return next(new ErrorHandler("Password reset token is invalid or has expired", 400));
-  }
-
+  validatePassword(req.body.password);
   user.password = req.body.password;
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
   await user.save();
 
-  const html = generatePasswordChangeEmailTemplate(user.name);
   await sendEmail({
     email: user.email,
     subject: "Password Change Alert",
-    html,
+    html: generatePasswordChangeEmailTemplate(user.name),
   });
 
-  res.status(200).json({
-    success: true,
-    message: "Password has been reset successfully.",
-  });
+  res.status(200).json({ success: true, message: "Password reset successful." });
 });
+
 
 /* =========================================================
    ✅ Update Password (logged in)
 ========================================================= */
 export const updatePassword = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findById(req.user.id).select("+password");
+  if (!user) return next(new ErrorHandler("User not found.", 404));
 
   const isMatched = await user.comparePassword(req.body.oldPassword);
-  if (!isMatched) {
-    return res.status(400).json({ success: false, message: "Old password is incorrect" });
-  }
+  if (!isMatched) return next(new ErrorHandler("Old password is incorrect.", 400));
 
+  validatePassword(req.body.newPassword);
   user.password = req.body.newPassword;
   await user.save();
 
-  const html = generatePasswordChangeEmailTemplate(user.name);
   await sendEmail({
     email: user.email,
     subject: "Password Change Alert",
-    html,
+    html: generatePasswordChangeEmailTemplate(user.name),
   });
 
-  res.status(200).json({
-    success: true,
-    message: "Password updated successfully.",
-  });
+  res.status(200).json({ success: true, message: "Password updated successfully." });
 });
 
 /* =========================================================
    ✅ Logout
 ========================================================= */
-const logout = catchAsyncErrors(async (req, res, next) => {
+export const logout = catchAsyncErrors(async (req, res) => {
   if (req.user) {
     const user = await User.findById(req.user._id).select("+refreshToken");
     if (user) {
@@ -353,41 +293,43 @@ const logout = catchAsyncErrors(async (req, res, next) => {
     }
   }
 
-  res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-  }).status(200).json({ success: true, message: "Logged out successfully." });
+  res
+    .clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+    })
+    .status(200)
+    .json({ success: true, message: "Logged out successfully." });
 });
 
 /* =========================================================
    ✅ Get Current User
 ========================================================= */
-const getUser = catchAsyncErrors(async (req, res) => {
+export const getUser = catchAsyncErrors(async (req, res) => {
   res.status(200).json({ success: true, user: req.user });
 });
 
 /* =========================================================
    ✅ Refresh Token
 ========================================================= */
-const refreshToken = catchAsyncErrors(async (req, res, next) => {
+export const refreshToken = catchAsyncErrors(async (req, res, next) => {
   const token = req.cookies.refreshToken;
-  if (!token) {
-    return res.status(401).json({ success: false, message: "Refresh token required." });
-  }
+  if (!token)
+    return next(new ErrorHandler("Refresh token required.", 401));
 
   const user = await User.findOne({ refreshToken: token }).select("+refreshToken");
-  if (!user) return res.status(401).json({ success: false, message: "Invalid refresh token." });
+  if (!user) return next(new ErrorHandler("Invalid refresh token.", 401));
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
     if (decoded.id !== user._id.toString()) {
-      return res.status(401).json({ success: false, message: "Token mismatch." });
+      return next(new ErrorHandler("Token mismatch.", 401));
     }
 
     await sendToken(user, 200, "Access token refreshed.", res);
   } catch (err) {
-    return res.status(401).json({ success: false, message: "Refresh token expired or invalid." });
+    return next(new ErrorHandler("Refresh token expired or invalid.", 401));
   }
 });
 
@@ -452,12 +394,4 @@ export const updateProfile = catchAsyncErrors(async (req, res, next) => {
 });
 
 
-/* -------------------------
-   Exports
-------------------------- */
-export {
-  login,
-  logout,
-  getUser,
-  refreshToken,
-};
+

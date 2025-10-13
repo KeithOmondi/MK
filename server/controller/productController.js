@@ -41,8 +41,11 @@ const validateVariants = (variants) =>
 /* ----------------- CREATE PRODUCT ----------------- */
 export const createProduct = asyncHandler(async (req, res) => {
   const body = req.body || {};
-  const { name, description, category, price } = body;
 
+  // ✅ Ensure req.files always exists
+  const files = Array.isArray(req.files) ? req.files : [];
+
+  const { name, description, category, price } = body;
   if (!name || !description || !category || price == null) {
     res.status(400);
     throw new Error("Name, description, category, and price are required.");
@@ -81,14 +84,14 @@ export const createProduct = asyncHandler(async (req, res) => {
     return ["NewArrivals"];
   })();
 
-  const uploadResults = req.files
-    ? await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)))
-    : [];
+  // ✅ Upload images safely (if any)
+  const uploadResults = await Promise.allSettled(
+    files.map((f) => uploadToCloudinary(f.buffer))
+  );
   const successfulUploads = uploadResults
     .filter((r) => r.status === "fulfilled")
     .map((r) => r.value);
 
-  // Generate SKU
   const catPrefix = categoryDoc.name?.slice(0, 3).toUpperCase() || "GEN";
   const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -129,6 +132,7 @@ export const createProduct = asyncHandler(async (req, res) => {
   const product = await Product.create(payload);
   res.status(201).json({ status: "success", data: product });
 });
+
 
 /* ----------------- UPDATE PRODUCT ----------------- */
 export const updateProduct = asyncHandler(async (req, res) => {

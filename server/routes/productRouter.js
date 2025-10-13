@@ -24,7 +24,7 @@ router.post(
   "/create",
   isAuthenticated,
   isAuthorized("Supplier"),
-  upload.array("images", 5),
+  upload.any("images", 5),
   createProduct
 );
 

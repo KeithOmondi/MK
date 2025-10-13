@@ -1,7 +1,9 @@
 import nodemailer from "nodemailer";
 
-export const sendEmail = async ({ email, subject, message, html }) => {
-  if (!email || !subject || (!message && !html)) {
+export const sendEmail = async ({ email, to, subject, message, html }) => {
+  const recipient = email || to; // ✅ handle both cases
+
+  if (!recipient || !subject || (!message && !html)) {
     throw new Error("Email, subject, and either message or HTML content are required.");
   }
 
@@ -9,19 +11,17 @@ export const sendEmail = async ({ email, subject, message, html }) => {
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465, // true for 465
+      secure: Number(process.env.SMTP_PORT) === 465,
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-      tls: {
-        rejectUnauthorized: false,
-      },
+      tls: { rejectUnauthorized: false },
     });
 
     const mailOptions = {
       from: `"MK Store" <${process.env.SMTP_USER}>`,
-      to: email,
+      to: recipient,
       subject,
       text: message || "",
       html: html || "",

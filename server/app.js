@@ -33,6 +33,8 @@ import addressRouter from "./routes/addressRouter.js";
 import offersRouter from "./routes/offersRouter.js";
 import reportRouter from "./routes/reportRouter.js"
 import disputeRouter from "./routes/disputeRouter.js"
+import couponRouter from "./routes/couponRouter.js"
+import walletRouter from "./routes/walletRouter.js"
 import fileUpload from "express-fileupload";
 
 dotenv.config({ path: "./config/.env" });
@@ -72,7 +74,9 @@ app.use((req, res, next) => {
 });
 
 // ✅ Apply sanitizer globally
-sanitizeMiddleware(app);
+sanitizeMiddleware(app);  
+
+
 
 // ✅ Routes
 app.use("/api/v1/auth", authRouter, limiter, loginLimiter);
@@ -91,6 +95,8 @@ app.use("/api/v1/addresses", addressRouter);
 app.use("/api/v1/offers", offersRouter);
 app.use("/api/v1/reports", reportRouter);
 app.use("/api/v1/disputes", disputeRouter);
+app.use("/api/v1/coupons", couponRouter);
+app.use("/api/v1/wallet", walletRouter);
 
 // ✅ Global error handler
 app.use(errorMiddleware);
