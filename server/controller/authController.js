@@ -142,27 +142,43 @@ export const resendOTP = catchAsyncErrors(async (req, res, next) => {
 });
 
 /* =========================================================
-   ✅ Login
+   ✅ Login Controller
 ========================================================= */
 export const login = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return next(new ErrorHandler("Email and password are required.", 400));
 
+  // 1️⃣ Validate input
+  if (!email || !password) {
+    return next(new ErrorHandler("Email and password are required.", 400));
+  }
+
+  // 2️⃣ Find user by email (ensure case-insensitive + password field included)
   const user = await User.findOne({ email: email.toLowerCase().trim() }).select(
     "+password +loginAttempts +lockUntil +refreshToken"
   );
-  if (!user) return next(new ErrorHandler("Invalid email or password.", 401));
 
-  if (user.role === "Supplier") {
-    const supplier = await Supplier.findOne({ user: user._id });
-    if (!supplier) return next(new ErrorHandler("Supplier profile not found.", 403));
-    if (!supplier.verified)
-      return next(new ErrorHandler("Please verify your email with the OTP sent.", 403));
-    if (supplier.status !== "Approved")
-      return next(new ErrorHandler("Your supplier account is awaiting admin approval.", 403));
+  if (!user) {
+    return next(new ErrorHandler("Invalid email or password.", 401));
   }
 
+  // 3️⃣ Supplier-specific checks
+  if (user.role === "Supplier") {
+    const supplier = await Supplier.findOne({ user: user._id });
+
+    if (!supplier) {
+      return next(new ErrorHandler("Supplier profile not found.", 403));
+    }
+
+    if (!supplier.verified) {
+      return next(new ErrorHandler("Please verify your email with the OTP sent.", 403));
+    }
+
+    if (supplier.status !== "Approved") {
+      return next(new ErrorHandler("Your supplier account is awaiting admin approval.", 403));
+    }
+  }
+
+  // 4️⃣ Check if account is locked
   if (user.isLocked) {
     const unlockTime = Math.ceil((user.lockUntil - Date.now()) / 60000);
     return res.status(423).json({
@@ -172,9 +188,11 @@ export const login = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
+  // 5️⃣ Verify password
   const isValid = await user.comparePassword(password);
   if (!isValid) {
     await user.incrementLoginAttempts();
+
     const attemptsLeft = Math.max(5 - (user.loginAttempts || 0), 0);
     return res.status(401).json({
       success: false,
@@ -183,27 +201,33 @@ export const login = catchAsyncErrors(async (req, res, next) => {
     });
   }
 
+  // 6️⃣ Reset login attempts after successful login
   await user.resetLoginAttempts();
 
+  // 7️⃣ Record login details
   const ip =
-    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
     req.connection.remoteAddress ||
     req.ip ||
     "Unknown IP";
+
   const userAgent = req.headers["user-agent"] || "Unknown device";
   const time = new Date().toLocaleString();
 
   user.loginHistory = [...(user.loginHistory || []), { ip, userAgent, time }].slice(-10);
   await user.save({ validateBeforeSave: false });
 
+  // 8️⃣ Send login alert email
   await sendEmail({
     email: user.email,
     subject: "New Login Detected",
     html: generateLoginAlertEmailTemplate(user.name, ip, userAgent, time),
   });
 
+  // 9️⃣ Generate and send JWT token
   await sendToken(user, 200, "Login successful.", res);
 });
+
 
 
 /* =========================================================

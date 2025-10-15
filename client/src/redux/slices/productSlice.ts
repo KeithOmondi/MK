@@ -39,8 +39,10 @@ export interface SEO {
 
 export interface SupplierRef {
   _id: string;
-  name?: string;
-  shopName?: string;
+  name?: string;        // Supplier's personal name
+  shopName?: string;    // Business or storefront name
+  rating?: number;      // Average shop rating (0–5)
+  verified?: boolean;
 }
 
 export interface Product {
@@ -101,7 +103,10 @@ interface ProductState {
   pages: number;
   total: number;
   searchQuery: string;
-  lastFetchedHomepage?: number; // 🧭 prevents infinite refetches
+  lastFetchedHomepage?: number;
+  related: Product[]; // 👈 add this
+  relatedLoading: boolean; // 👈 add this
+  relatedError: string | null; // 👈 add this
 }
 
 const initialState: ProductState = {
@@ -122,7 +127,10 @@ const initialState: ProductState = {
   total: 0,
   searchQuery: "",
   lastFetchedHomepage: undefined,
-}; 
+  related: [],
+  relatedLoading: false,
+  relatedError: null,
+};
 
 /* ======================================================
    🧰 HELPERS
@@ -146,7 +154,6 @@ const toFormData = (payload: any): FormData => {
       formData.append(key, value as any);
     }
   }
-
   return formData;
 };
 
@@ -166,9 +173,7 @@ export const createProduct = createAsyncThunk<Product, any, { rejectValue: strin
   async (payload, { rejectWithValue }) => {
     try {
       const formData = toFormData(payload);
-      const { data } = await api.post("/products/create", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const { data } = await api.post("/products/create", formData);
       return data.data as Product;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || err.message);
@@ -235,6 +240,34 @@ export const fetchAdminProducts = createAsyncThunk<
   }
 });
 
+// ✅ Fetch Supplier Products
+export const fetchSupplierProducts = createAsyncThunk<Product[], void, { rejectValue: string }>(
+  "products/fetchSupplierProducts",
+  async (_, { rejectWithValue }) => {
+    try {
+      const { data } = await api.get("/products/supplier");
+      console.log("✅ Supplier API raw response:", data);
+
+      if (!data || !Array.isArray(data.data)) {
+        console.error("❌ Unexpected API response:", data);
+        return rejectWithValue("No products array returned from API");
+      }
+
+      console.log("✅ Products array:", data.data);
+      return data.data;
+    } catch (err: any) {
+      console.error("❌ Fetch error:", err);
+      return rejectWithValue(err.response?.data?.message || "Failed to fetch supplier products");
+    }
+  }
+);
+
+
+
+
+
+
+
 // ✅ Fetch Single Product
 export const fetchProductById = createAsyncThunk<Product, string, { rejectValue: string }>(
   "products/fetchById",
@@ -257,7 +290,6 @@ export const fetchHomepageProducts = createAsyncThunk<
   const { products } = getState();
   const now = Date.now();
 
-  // 🧭 Prevent refetching within 5 minutes
   if (products.lastFetchedHomepage && now - products.lastFetchedHomepage < 5 * 60 * 1000) {
     return products.homepageProducts;
   }
@@ -298,6 +330,31 @@ export const fetchProductsByCategory = createAsyncThunk<
   }
 });
 
+// ✅ Fetch related products by category (exclude current product)
+export const fetchRelatedProducts = createAsyncThunk(
+  "products/fetchRelatedProducts",
+  async (
+    {
+      categoryId,
+      excludeId,
+      limit = 6,
+    }: { categoryId: string; excludeId: string; limit?: number },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await api.get("/products/related", {
+        params: { category: categoryId, exclude: excludeId, limit },
+      });
+      return data.products;
+    } catch (err: any) {
+      console.error("❌ Error fetching related products:", err);
+      return rejectWithValue(
+        err.response?.data?.message || "Failed to fetch related products"
+      );
+    }
+  }
+);
+
 /* ======================================================
    🧩 SLICE
 ====================================================== */
@@ -317,10 +374,13 @@ const productSlice = createSlice({
       state.searchQuery = "";
       state.filteredProducts = state.products.slice();
     },
+    resetProducts(state) {
+      Object.assign(state, initialState);
+    },
   },
   extraReducers: (builder) => {
-    /* CREATE / UPDATE / DELETE */
     builder
+      /* CREATE / UPDATE / DELETE */
       .addCase(createProduct.pending, (state) => {
         state.loading = true;
       })
@@ -358,22 +418,21 @@ const productSlice = createSlice({
         state.error = action.payload ?? "Failed to fetch homepage products";
       });
 
-      /* FETCH SINGLE PRODUCT */
-builder
-  .addCase(fetchProductById.pending, (state) => {
-    state.loading = true;
-    state.error = null;
-  })
-  .addCase(fetchProductById.fulfilled, (state, action) => {
-    state.loading = false;
-    state.product = action.payload;
-  })
-  .addCase(fetchProductById.rejected, (state, action) => {
-    state.loading = false;
-    state.product = null;
-    state.error = action.payload ?? "Failed to fetch product by ID";
-  });
-
+    /* FETCH SINGLE PRODUCT */
+    builder
+      .addCase(fetchProductById.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchProductById.fulfilled, (state, action) => {
+        state.loading = false;
+        state.product = action.payload;
+      })
+      .addCase(fetchProductById.rejected, (state, action) => {
+        state.loading = false;
+        state.product = null;
+        state.error = action.payload ?? "Failed to fetch product by ID";
+      });
 
     /* FETCH SECTION */
     builder
@@ -406,13 +465,45 @@ builder
         state.loading = false;
         state.error = action.payload ?? "Failed to fetch admin products";
       });
+
+    /* FETCH SUPPLIER PRODUCTS */
+    builder
+      .addCase(fetchSupplierProducts.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchSupplierProducts.fulfilled, (state, action) => {
+        state.loading = false;
+        state.products = action.payload;
+        state.filteredProducts = action.payload;
+      })
+      .addCase(fetchSupplierProducts.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload ?? "Failed to fetch supplier products";
+      });
+
+      //Related products
+      builder
+  .addCase(fetchRelatedProducts.pending, (state) => {
+    state.relatedLoading = true;
+    state.relatedError = null;
+  })
+  .addCase(fetchRelatedProducts.fulfilled, (state, action) => {
+    state.relatedLoading = false;
+    state.related = action.payload;
+  })
+  .addCase(fetchRelatedProducts.rejected, (state, action) => {
+    state.relatedLoading = false;
+    state.relatedError =
+      (action.payload as string) || "Failed to load related products";
+  });
   },
 });
 
 /* ======================================================
    🚀 EXPORTS
 ====================================================== */
-export const { clearProduct, setSearchQuery, resetSearch } = productSlice.actions;
+export const { clearProduct, setSearchQuery, resetSearch, resetProducts } = productSlice.actions;
 export default productSlice.reducer;
 
 /* ======================================================
@@ -426,3 +517,7 @@ export const selectProductError = (state: RootState) => state.products.error;
 export const selectHomepageProducts = (state: RootState) => state.products.homepageProducts;
 export const selectSectionProducts = (state: RootState) => state.products.sectionProducts;
 export const selectSearchQuery = (state: RootState) => state.products.searchQuery;
+export const selectRelatedProducts = (state: RootState) => state.products.related;
+export const selectRelatedLoading = (state: RootState) => state.products.relatedLoading;
+export const selectRelatedError = (state: RootState) => state.products.relatedError;
+

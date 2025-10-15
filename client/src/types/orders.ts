@@ -18,6 +18,6 @@ export interface OrderPayload {
   };
   shippingCost: number;
   coupon?: string | null;
-  paymentMethod: "cod" | "mpesa";
+  paymentMethod: "cod" | "mpesa" | "wallet";
 }
 

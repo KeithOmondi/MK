@@ -36,6 +36,7 @@ export interface Supplier {
   verified: boolean;
   createdAt?: string;
   updatedAt?: string;
+  rating?: number; // ✅ Added
 }
 
 interface SupplierState {

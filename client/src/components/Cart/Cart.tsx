@@ -17,7 +17,7 @@ export default function Cart() {
 
   const cartItems = useSelector(selectCartItems);
   const checkoutTotals = useSelector(selectCartTotals);
-  const totalAmount = checkoutTotals.totalAmount;
+  const totalAmount = checkoutTotals?.totalAmount || 0;
 
   const handleQuantityChange = (id: string, quantity: number, stock?: number) => {
     if (quantity > 0 && quantity <= (stock ?? Infinity)) {
@@ -126,9 +126,12 @@ export default function Cart() {
                 ))}
               </div>
 
+              {/* Total */}
               <p className="flex justify-between font-semibold text-lg mb-4 border-t pt-4">
                 <span>Total:</span>
-                <span>Ksh {totalAmount.toLocaleString()}</span>
+                <span className="text-green-700">
+                  Ksh {totalAmount.toLocaleString()}
+                </span>
               </p>
 
               <button

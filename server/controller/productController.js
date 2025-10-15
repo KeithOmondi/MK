@@ -17,12 +17,15 @@ const MAX_PAGE_SIZE = 100;
 const isValidObjectId = (id) => ObjectId.isValid(id);
 
 const safeJSON = (val) => {
+  if (!val) return null;
+  if (typeof val !== "string") return val;
   try {
-    return typeof val === "string" ? JSON.parse(val) : val;
+    return JSON.parse(val);
   } catch {
-    return null;
+    return val; // fallback to raw string if not JSON
   }
 };
+
 
 const validateDimensions = (dim) => {
   if (!dim) return false;
@@ -41,9 +44,9 @@ const validateVariants = (variants) =>
 /* ----------------- CREATE PRODUCT ----------------- */
 export const createProduct = asyncHandler(async (req, res) => {
   const body = req.body || {};
-
-  // ✅ Ensure req.files always exists
   const files = Array.isArray(req.files) ? req.files : [];
+
+  console.log("📥 Incoming createProduct body:", body);
 
   const { name, description, category, price } = body;
   if (!name || !description || !category || price == null) {
@@ -51,58 +54,87 @@ export const createProduct = asyncHandler(async (req, res) => {
     throw new Error("Name, description, category, and price are required.");
   }
 
-  if (!isValidObjectId(category)) {
-    res.status(400);
-    throw new Error("Invalid category ID.");
+  /* ---------- ✅ Handle Category (id | slug | name) ---------- */
+  let categoryDoc = null;
+  if (mongoose.Types.ObjectId.isValid(category)) {
+    categoryDoc = await Category.findById(category);
+  } else {
+    categoryDoc = await Category.findOne({
+      $or: [{ slug: category }, { name: category }],
+    });
   }
 
+  if (!categoryDoc) {
+    res.status(400);
+    throw new Error("Invalid category ID or name.");
+  }
+
+  /* ---------- ✅ Get Supplier ---------- */
   const supplier = await Supplier.findOne({ user: req.user._id }).select("_id");
   if (!supplier) {
     res.status(403);
     throw new Error("You must register as a supplier first.");
   }
 
-  const categoryDoc = await Category.findById(category);
-  if (!categoryDoc) {
-    res.status(404);
-    throw new Error("Category not found.");
-  }
+  /* ---------- ✅ Safely parse possible JSON strings ---------- */
+  const parseMaybe = (val, fallback = null) => {
+    if (!val) return fallback;
+    if (typeof val === "object") return val;
+    try {
+      return JSON.parse(val);
+    } catch {
+      return fallback;
+    }
+  };
 
-  const dimensions = safeJSON(body.dimensions) || { length: 0, width: 0, height: 0 };
-  const variants = safeJSON(body.variants) || [];
+  const dimensions = parseMaybe(body.dimensions, { length: 0, width: 0, height: 0 });
+  const variants = Array.isArray(body.variants)
+    ? body.variants.map(v => parseMaybe(v, {}))
+    : parseMaybe(body.variants, []);
 
-  let stockValue = Number(body.stock) || 0;
-  if (variants.length > 0) {
-    const totalStock = variants.reduce((a, v) => a + (v.stock || 0), 0);
-    if (totalStock > 0) stockValue = totalStock;
-  }
+  const shippingRegions = parseMaybe(body.shippingRegions, []);
+  const tags = parseMaybe(body.tags, []);
+  const seo = parseMaybe(body.seo, {});
+  const flashSale = parseMaybe(body.flashSale, {});
+  const flags = parseMaybe(body.flags, {});
+  const sectionsParsed = parseMaybe(body.sections, []);
 
   const sectionsArr = (() => {
-    const parsed = safeJSON(body.sections);
-    if (Array.isArray(parsed)) return parsed.filter((s) => ALLOWED_SECTIONS.includes(s));
-    if (typeof parsed === "string" && ALLOWED_SECTIONS.includes(parsed)) return [parsed];
+    if (Array.isArray(sectionsParsed))
+      return sectionsParsed.filter(s => ALLOWED_SECTIONS.includes(s));
+    if (typeof sectionsParsed === "string" && ALLOWED_SECTIONS.includes(sectionsParsed))
+      return [sectionsParsed];
     return ["NewArrivals"];
   })();
 
-  // ✅ Upload images safely (if any)
+  /* ---------- ✅ Compute Stock ---------- */
+  let stockValue = Number(body.stock) || 0;
+  if (Array.isArray(variants) && variants.length > 0) {
+    const totalStock = variants.reduce((a, v) => a + (Number(v.stock) || 0), 0);
+    if (totalStock > 0) stockValue = totalStock;
+  }
+
+  /* ---------- ✅ Upload Images ---------- */
   const uploadResults = await Promise.allSettled(
-    files.map((f) => uploadToCloudinary(f.buffer))
+    files.map(f => uploadToCloudinary(f.buffer))
   );
   const successfulUploads = uploadResults
-    .filter((r) => r.status === "fulfilled")
-    .map((r) => r.value);
+    .filter(r => r.status === "fulfilled")
+    .map(r => r.value);
 
+  /* ---------- ✅ Generate SKU ---------- */
   const catPrefix = categoryDoc.name?.slice(0, 3).toUpperCase() || "GEN";
   const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
   const generatedSKU = `MK-${catPrefix}-${dateCode}-${rand}`;
 
+  /* ---------- ✅ Final Payload ---------- */
   const payload = {
     name,
     description,
-    category,
+    category: categoryDoc._id,
     supplier: supplier._id,
-    price,
+    price: Number(price),
     stock: stockValue,
     images: successfulUploads,
     sections: sectionsArr,
@@ -113,97 +145,119 @@ export const createProduct = asyncHandler(async (req, res) => {
     dimensions,
     variants,
     fragility: body.fragility || "low",
-    shippingRegions: safeJSON(body.shippingRegions) || [],
+    shippingRegions,
     deliveryTime: body.deliveryTime || "",
     freeShippingThreshold: Number(body.freeShippingThreshold) || 5000,
     warehouseLocation: body.warehouseLocation || "",
     returnPolicy: body.returnPolicy || "",
     warranty: body.warranty || "",
-    flashSale: safeJSON(body.flashSale) || {},
-    tags: safeJSON(body.tags) || [],
+    flashSale,
+    tags,
     discountType: body.discountType || "none",
     discountValue: Number(body.discountValue) || 0,
     taxRate: Number(body.taxRate) || 0,
     barcode: body.barcode || "",
-    flags: safeJSON(body.flags) || {},
-    seo: safeJSON(body.seo) || {},
+    flags,
+    seo,
   };
 
+  /* ---------- ✅ Create Product ---------- */
   const product = await Product.create(payload);
-  res.status(201).json({ status: "success", data: product });
+
+  res.status(201).json({
+    status: "success",
+    message: "Product created successfully and pending admin review.",
+    data: product,
+  });
 });
+;
 
 
-/* ----------------- UPDATE PRODUCT ----------------- */
 export const updateProduct = asyncHandler(async (req, res) => {
   const id = req.params.id;
+
+  // --- Validate product ID ---
   if (!isValidObjectId(id)) {
-    res.status(400);
-    throw new Error("Invalid product id.");
+    return res.status(400).json({ success: false, message: "Invalid product ID." });
   }
 
   const product = await Product.findById(id);
   if (!product) {
-    res.status(404);
-    throw new Error("Product not found.");
+    return res.status(404).json({ success: false, message: "Product not found." });
   }
 
+  // --- Access control ---
   if (req.user.role !== "Admin" && product.supplier.toString() !== req.user._id.toString()) {
-    res.status(403);
-    throw new Error("You are not authorized to update this product.");
+    return res.status(403).json({ success: false, message: "You are not authorized to update this product." });
   }
 
   const updates = { ...(req.body || {}) };
 
-  // Parse and validate variants & dimensions
-  if (updates.variants) {
-    const parsed = safeJSON(updates.variants) || updates.variants;
-    if (!validateVariants(parsed)) {
-      res.status(400);
-      throw new Error("Invalid variants data.");
+  // --- Normalize all JSON-like fields from FormData ---
+  const jsonFields = ["variants", "dimensions", "seo", "flashSale", "sections", "shippingRegions", "tags"];
+  for (const field of jsonFields) {
+    if (updates[field]) {
+      updates[field] = safeJSON(updates[field]) || updates[field];
     }
-    updates.variants = parsed;
   }
+
+  // --- Validate complex structures ---
+  if (updates.variants && !validateVariants(updates.variants)) {
+    return res.status(400).json({ success: false, message: "Invalid variants data." });
+  }
+
   if (updates.dimensions && !validateDimensions(updates.dimensions)) {
-    res.status(400);
-    throw new Error("Invalid dimensions.");
+    return res.status(400).json({ success: false, message: "Invalid dimensions data." });
   }
 
-  // Flash sale validation
   if (updates.flashSale) {
-    const fs = safeJSON(updates.flashSale) || updates.flashSale;
-    if (fs.startDate && fs.endDate && new Date(fs.endDate) <= new Date(fs.startDate)) {
-      res.status(400);
-      throw new Error("Flash sale endDate must be after startDate.");
+    const { startDate, endDate } = updates.flashSale;
+    if (startDate && endDate && new Date(endDate) <= new Date(startDate)) {
+      return res.status(400).json({ success: false, message: "Flash sale end date must be after start date." });
     }
-    updates.flashSale = fs;
   }
 
-  // Handle uploaded images
-  if (req.files && req.files.length) {
-    const uploadResults = await Promise.allSettled(req.files.map((f) => uploadToCloudinary(f.buffer)));
-    const newImages = uploadResults.filter((r) => r.status === "fulfilled").map((r) => r.value);
-    updates.images = [...(product.images || []), ...newImages];
+  // --- Handle new uploaded images (if any) ---
+  if (req.files && req.files.length > 0) {
+    const uploadResults = await Promise.allSettled(
+      req.files.map(async (file) => await uploadToCloudinary(file.buffer))
+    );
+    const successfulUploads = uploadResults
+      .filter((r) => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    if (successfulUploads.length > 0) {
+      updates.images = [...(product.images || []), ...successfulUploads];
+    }
   }
 
-  // Admin approval shortcut
+  // --- Auto-approve shortcut for Admin ---
   if (req.user.role === "Admin" && updates.status === "approved") {
     updates.status = "active";
     updates.visibility = "public";
   }
 
-  const allowed = [
+  // --- Only allow safe keys to be modified ---
+  const allowedFields = [
     "name","description","price","oldPrice","brand","stock","weight","dimensions","images",
     "sections","shippingRegions","deliveryTime","freeShippingThreshold","warehouseLocation",
     "returnPolicy","warranty","flashSale","variants","status","visibility","tags",
     "discountType","discountValue","taxRate","sku","barcode","flags","seo","fragility"
   ];
-  for (const [k, v] of Object.entries(updates)) {
-    if (allowed.includes(k) && v != null) product.set(k, v);
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (allowedFields.includes(key) && value !== undefined && value !== null) {
+      product.set(key, value);
+    }
   }
 
-  const updated = await product.save();
-  res.json({ status: "success", message: "Product updated successfully.", data: updated });
+  // --- Save & respond ---
+  const updatedProduct = await product.save();
+  return res.status(200).json({
+    success: true,
+    message: "✅ Product updated successfully.",
+    data: updatedProduct,
+  });
 });
 
 /* ---------- homepage products ---------- */
@@ -266,6 +320,10 @@ export const getProducts = asyncHandler(async (req, res) => {
   const filters = { deletedAt: null };
   if (!isAdmin) filters.status = "active";
 
+  if (req.query.supplierId && isValidObjectId(req.query.supplierId)) {
+    filters.supplier = req.query.supplierId;
+  }
+
   if (req.query.category && isValidObjectId(req.query.category)) {
     filters.category = req.query.category;
   } else if (req.query.category) {
@@ -275,7 +333,6 @@ export const getProducts = asyncHandler(async (req, res) => {
   if (req.query.section) filters.sections = req.query.section;
 
   if (req.query.q) {
-    // text search
     filters.$text = { $search: String(req.query.q) };
   }
 
@@ -295,6 +352,8 @@ export const getProducts = asyncHandler(async (req, res) => {
     data: products,
   });
 });
+
+
 
 /* ---------- get single product by id or slug ---------- */
 export const getProductById = asyncHandler(async (req, res) => {
@@ -469,3 +528,78 @@ export const deleteProductImage = asyncHandler(async (req, res) => {
     data: product.images,
   });
 });
+
+
+export const getSupplierProducts = asyncHandler(async (req, res) => {
+  if (!req.user || req.user.role.toLowerCase() !== "supplier") {
+    return res.status(403).json({ success: false, message: "Only suppliers can access their products" });
+  }
+
+  // ✅ fetch Supplier ID linked to this user
+  const supplier = await Supplier.findOne({ user: req.user._id }).select("_id");
+  if (!supplier) {
+    return res.status(404).json({ success: false, message: "Supplier not found" });
+  }
+
+  const supplierId = supplier._id;
+
+  // Pagination & search
+  const page = parseInt(req.query.page) || 1;
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 12, 1), 100);
+  const skip = (page - 1) * limit;
+
+  const filters = { supplier: supplierId, deletedAt: null }; // <- removed ": any"
+  if (req.query.q) filters.$text = { $search: req.query.q };
+
+  const total = await Product.countDocuments(filters);
+  const products = await Product.find(filters)
+    .populate("category", "name")
+    .populate("supplier", "shopName name")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  res.status(200).json({
+    success: true,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+    data: products,
+  });
+});
+
+/**
+ * @desc    Get related products by category (excluding current product)
+ * @route   GET /api/v1/products/related
+ * @access  Public
+ */
+export const getRelatedProducts = asyncHandler(async (req, res) => {
+  const { category, exclude, limit = 6 } = req.query;
+
+  if (!category) {
+    res.status(400);
+    throw new Error("Category parameter is required.");
+  }
+
+  const filter = {
+    "category": category, // works whether it's string or ObjectId
+    "_id": { $ne: exclude }, // exclude current product
+  };
+
+  // 🔍 Populate category and supplier if needed
+  const related = await Product.find(filter)
+    .limit(Number(limit))
+    .populate("category", "name")
+    .populate("supplier", "name email");
+
+  res.status(200).json({
+    success: true,
+    count: related.length,
+    products: related,
+  });
+});
+
+
+
+

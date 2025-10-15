@@ -1,10 +1,22 @@
 import mongoose from "mongoose";
 
-const walletTransactionSchema = new mongoose.Schema(
+const { Schema } = mongoose;
+
+/* ============================================================
+   WALLET TRANSACTION SUBDOCUMENT
+============================================================ */
+const walletTransactionSchema = new Schema(
   {
     type: {
       type: String,
-      enum: ["deposit", "withdrawal"],
+      enum: [
+        "deposit",
+        "withdrawal",
+        "payout",
+        "platform_fee",
+        "refund",
+        "adjustment",
+      ],
       required: true,
     },
     amount: {
@@ -18,23 +30,35 @@ const walletTransactionSchema = new mongoose.Schema(
     },
     reference: {
       type: String,
-      default: null, // e.g., Mpesa ref, transaction id
+      default: null, // e.g. Mpesa ref, Order ID, transaction ID
+    },
+    status: {
+      type: String,
+      enum: ["Pending", "Completed", "Failed"],
+      default: "Completed",
     },
     date: {
       type: Date,
       default: Date.now,
     },
+    metadata: {
+      type: Object,
+      default: {}, // for flexible extra data (like orderId, buyerId, etc.)
+    },
   },
   { _id: false }
 );
 
-const walletSchema = new mongoose.Schema(
+/* ============================================================
+   WALLET MAIN SCHEMA
+============================================================ */
+const walletSchema = new Schema(
   {
     user: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
-      unique: true,
+      required: false, // allow null for platform/system wallet
+      unique: false,
     },
     balance: {
       type: Number,
@@ -50,7 +74,9 @@ const walletSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Ensure negative balance is not possible
+/* ============================================================
+   HOOKS & VALIDATIONS
+============================================================ */
 walletSchema.pre("save", function (next) {
   if (this.balance < 0) {
     return next(new Error("Insufficient wallet balance."));
@@ -58,5 +84,8 @@ walletSchema.pre("save", function (next) {
   next();
 });
 
-const Wallet = mongoose.model("Wallet", walletSchema);
+/* ============================================================
+   MODEL EXPORT
+============================================================ */
+const Wallet = mongoose.models.Wallet || mongoose.model("Wallet", walletSchema);
 export default Wallet;

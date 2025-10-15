@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingCart, Search, Heart, User, Menu } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -86,12 +86,7 @@ const Header: React.FC = () => {
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 md:px-6">
           {/* ===== Logo ===== */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="md:hidden text-white hover:text-[#FF6B35]"
-            >
-              <Menu size={26} />
-            </button>
+           
             <Link to="/" className="flex items-center gap-2">
               <img src="/logo.png" alt="MKStore" className="h-9 object-contain" />
               <span className="font-bold text-xl hidden sm:inline">MKStore</span>

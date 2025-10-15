@@ -1,13 +1,12 @@
 // ErrorHandler Class
 class ErrorHandler extends Error {
-  constructor(statusCode, message) {
-    super(message); // Call parent constructor with message
+  constructor(message, statusCode) {
+    super(message);
     this.statusCode = statusCode;
-
-    // Maintains proper stack trace in V8 environments
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
 
 // Error Middleware
 export const errorMiddleware = (err, req, res, next) => {

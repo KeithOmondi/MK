@@ -10,65 +10,85 @@ import {
   getAllProductsForAdmin,
   getProductsByCategory,
   getProductsBySection,
+  getSupplierProducts,
+  getRelatedProducts,
 } from "../controller/productController.js";
 import { isAuthenticated, isAuthorized } from "../middlewares/authMiddleware.js";
 import { upload } from "../middlewares/upload.js";
 
 const router = express.Router();
 
-/**
- * Supplier creates a product (awaiting admin review)
- * POST /api/v1/products/create
- */
+/* =========================================================
+   🛒 Create Product (Supplier Only)
+   POST /api/v1/products/create
+========================================================= */
 router.post(
   "/create",
   isAuthenticated,
   isAuthorized("Supplier"),
-  upload.any("images", 5),
+
+  // ✅ Ensure correct Content-Type
+  (req, res, next) => {
+    if (!req.is("multipart/form-data")) {
+      return res.status(400).json({
+        success: false,
+        message: "Content-Type must be multipart/form-data",
+      });
+    }
+    next();
+  },
+
+  // ✅ Multer handles up to 5 images
+  upload.array("images", 5),
+
   createProduct
 );
 
-/**
- * Public: list products (search, filters, pagination)
- * GET /api/v1/products/get
- */
+/* =========================================================
+   🌍 Public: List Products (search, filter, pagination)
+   GET /api/v1/products/get
+========================================================= */
 router.get("/get", getProducts);
 
-/**
- * Admin: list all products with filters
- * GET /api/v1/products/admin/get
- */
-router.get("/admin/get", isAuthenticated, isAuthorized("Admin"), getAllProductsForAdmin);
+/* =========================================================
+   🧑‍💼 Admin: Get All Products
+   GET /api/v1/products/admin/get
+========================================================= */
+router.get(
+  "/admin/get",
+  isAuthenticated,
+  isAuthorized("Admin"),
+  getAllProductsForAdmin
+);
 
-/**
- * Get products by category id or slug/name
- * GET /api/v1/products/category/:id
- */
+/* =========================================================
+   📦 Get Products by Category
+   GET /api/v1/products/category/:id
+========================================================= */
 router.get("/category/:id", getProductsByCategory);
 
-/**
- * Homepage featured sections
- * GET /api/v1/products/homepage
- */
+/* =========================================================
+   🏠 Homepage Sections (Featured, Trending, etc.)
+   GET /api/v1/products/homepage
+========================================================= */
 router.get("/homepage", getHomepageProducts);
 
-
-/**
- * Get single section (e.g. /api/v1/products/section/NewArrivals)
- * GET /api/v1/products/section/:section
- */
+/* =========================================================
+   🔥 Get Products by Section (e.g. /NewArrivals)
+   GET /api/v1/products/section/:section
+========================================================= */
 router.get("/section/:section", getProductsBySection);
 
-/**
- * Get single product by id or slug
- * GET /api/v1/products/get/:id
- */
+/* =========================================================
+   🔍 Get Single Product
+   GET /api/v1/products/get/:id
+========================================================= */
 router.get("/get/:id", getProductById);
 
-/**
- * Update product (Supplier or Admin)
- * PUT /api/v1/products/update/:id
- */
+/* =========================================================
+   ✏️ Update Product (Supplier or Admin)
+   PUT /api/v1/products/update/:id
+========================================================= */
 router.put(
   "/update/:id",
   isAuthenticated,
@@ -77,21 +97,41 @@ router.put(
   updateProduct
 );
 
-/**
- * Soft-delete: Supplier (their own) or Admin
- * DELETE /api/v1/products/delete/:id
- */
-router.delete("/delete/:id", isAuthenticated, isAuthorized("Supplier", "Admin"), deleteProduct);
+/* =========================================================
+   ❌ Delete Product (Soft Delete)
+   DELETE /api/v1/products/delete/:id
+========================================================= */
+router.delete(
+  "/delete/:id",
+  isAuthenticated,
+  isAuthorized("Supplier", "Admin"),
+  deleteProduct
+);
 
-/**
- * Delete a single image from a product
- * DELETE /api/v1/products/delete/:productId/images/:publicId
- */
+/* =========================================================
+   🖼️ Delete Single Product Image
+   DELETE /api/v1/products/delete/:productId/images/:publicId
+========================================================= */
 router.delete(
   "/delete/:productId/images/:publicId",
   isAuthenticated,
   isAuthorized("Supplier", "Admin"),
   deleteProductImage
 );
+
+/* =========================================================
+   🧑‍🏭 Supplier: Get Their Own Products
+   GET /api/v1/products/supplier
+========================================================= */
+router.get(
+  "/supplier",
+  isAuthenticated,
+  isAuthorized("Supplier"),
+  getSupplierProducts
+);
+
+// ✅ New route for related products
+router.get("/related", getRelatedProducts);
+
 
 export default router;

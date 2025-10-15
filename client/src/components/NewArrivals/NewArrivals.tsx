@@ -1,10 +1,8 @@
-// src/components/home/NewArrivals.tsx
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch } from "../../redux/store";
-import { getDisplayPrice } from "../../utils/price";
 import type { Product, ProductVariant } from "../../redux/slices/productSlice";
 import {
   fetchHomepageProducts,
@@ -12,25 +10,32 @@ import {
   selectProductLoading,
   selectProductError,
 } from "../../redux/slices/productSlice";
+import { getDisplayPrice } from "../../utils/price";
 
+/* ----------------------------------
+   NEW ARRIVALS SECTION
+---------------------------------- */
 const NewArrivals: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
 
-  // Redux selectors
+  // Redux state
   const homepageProducts = useSelector(selectHomepageProducts);
   const loading = useSelector(selectProductLoading);
   const error = useSelector(selectProductError);
 
-  // Extract section
+  // Extract section data
   const sectionProducts: Product[] = homepageProducts?.newarrivals || [];
 
-  // Fetch if not loaded
+  // Fetch homepage products once
   useEffect(() => {
-    if (sectionProducts.length === 0) {
+    if (!sectionProducts || sectionProducts.length === 0) {
       dispatch(fetchHomepageProducts());
     }
-  }, [dispatch, sectionProducts.length]);
+  }, [dispatch, sectionProducts?.length]);
 
+  /* ----------------------------------
+     Render
+  ---------------------------------- */
   return (
     <section className="bg-white py-12 px-4 sm:px-8 lg:px-16">
       {/* Header */}
@@ -49,7 +54,7 @@ const NewArrivals: React.FC = () => {
 
       {/* Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-        {/* Loading */}
+        {/* Loading skeletons */}
         {loading &&
           Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -58,8 +63,8 @@ const NewArrivals: React.FC = () => {
             />
           ))}
 
-        {/* Error */}
-        {error && (
+        {/* Error message */}
+        {error && !loading && (
           <p className="col-span-full text-center text-red-600 font-medium">
             {typeof error === "string"
               ? error
@@ -67,40 +72,47 @@ const NewArrivals: React.FC = () => {
           </p>
         )}
 
-        {/* Empty */}
+        {/* Empty state */}
         {!loading && !error && sectionProducts.length === 0 && (
           <p className="col-span-full text-center text-gray-600">
             No new arrivals available right now.
           </p>
         )}
 
-        {/* Product Cards */}
+        {/* Product cards */}
         {!loading &&
           !error &&
           sectionProducts.map((product) => {
             const variant: ProductVariant | undefined = product.variants?.[0];
             const { price, oldPrice } = getDisplayPrice(product, variant);
+            const imageUrl = product.images?.[0]?.url || "/placeholder.png";
 
             return (
               <Link
                 key={product._id}
                 to={`/product/${product.seo?.slug || product._id}`}
-                className="group bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100 hover:shadow-md transition block"
+                className="group bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100 hover:shadow-md hover:border-blue-300 transition block"
               >
-                {/* Image */}
+                {/* Image Section */}
                 <div className="relative">
                   <img
-                    src={product.images?.[0]?.url || "/placeholder.png"}
+                    src={imageUrl}
                     alt={product.name}
                     loading="lazy"
-                    className="w-full h-48 sm:h-56 object-contain bg-white transition-transform duration-200 group-hover:scale-105 cursor-pointer"
+                    className="w-full h-48 sm:h-56 object-contain bg-gray-50 transition-transform duration-300 group-hover:scale-105"
                   />
+                  {/* Badges */}
                   <span className="absolute top-2 left-2 bg-green-600 text-white text-xs font-semibold px-2 py-1 rounded">
                     New
                   </span>
+                  {product.flashSale?.isActive && (
+                    <span className="absolute top-2 right-2 bg-red-500 text-white text-xs font-semibold px-2 py-1 rounded">
+                      -{product.flashSale.discountPercentage}%
+                    </span>
+                  )}
                 </div>
 
-                {/* Info */}
+                {/* Info Section */}
                 <div className="p-3">
                   <h3
                     className="text-gray-800 font-medium text-sm truncate"
@@ -109,28 +121,30 @@ const NewArrivals: React.FC = () => {
                     {product.name}
                   </h3>
 
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-lg font-bold text-gray-900">
-                        Ksh {price.toFixed(2)}
+                  {/* Pricing */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-lg font-bold text-gray-900">
+                      KSh {price.toLocaleString()}
+                    </span>
+                    {oldPrice && (
+                      <span className="text-sm line-through text-gray-400">
+                        KSh {oldPrice.toLocaleString()}
                       </span>
-                      {oldPrice && (
-                        <span className="text-sm line-through text-gray-400">
-                          Ksh {oldPrice.toFixed(2)}
-                        </span>
-                      )}
-                    </div>
-
-                    {variant?.stock !== undefined && (
-                      <p
-                        className={`mt-1 text-sm font-medium ${
-                          variant.stock > 0 ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
-                        {variant.stock > 0
-                          ? `In Stock (${variant.stock} left)`
-                          : "Out of Stock"}
-                      </p>
                     )}
+                  </div>
+
+                  {/* Stock */}
+                  {variant?.stock !== undefined && (
+                    <p
+                      className={`mt-1 text-sm font-medium ${
+                        variant.stock > 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {variant.stock > 0
+                        ? `In Stock (${variant.stock} left)`
+                        : "Out of Stock"}
+                    </p>
+                  )}
                 </div>
               </Link>
             );

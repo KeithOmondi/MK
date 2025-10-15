@@ -14,13 +14,19 @@ const orderItemSchema = new Schema(
     quantity: { type: Number, required: true, default: 1 },
     price: { type: Number, required: true },
 
-    // Escrow & Seller Info
+    // Seller Info
     seller: {
       type: Schema.Types.ObjectId,
       ref: "Supplier",
       required: true,
     },
+
+    // 💰 Commission & Earnings
     commissionPercentage: { type: Number, default: 10 },
+    platformFee: { type: Number, default: 0 },
+    supplierEarnings: { type: Number, default: 0 },
+
+    // 💼 Escrow Management
     escrowStatus: {
       type: String,
       enum: ["Held", "Released", "Refunded", "Refund Pending"],
@@ -28,7 +34,7 @@ const orderItemSchema = new Schema(
     },
     escrowAmount: { type: Number, required: true },
 
-    // 👇 Refund fields for individual product item
+    // 🔁 Refund Info (per item)
     isReturned: { type: Boolean, default: false },
     refundStatus: {
       type: String,
@@ -47,25 +53,25 @@ const orderItemSchema = new Schema(
 =============================== */
 const orderSchema = new Schema(
   {
+    /* ---------- Buyer & Seller ---------- */
     buyer: {
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-
-    items: { type: [orderItemSchema], required: true },
-
     supplier: {
       type: Schema.Types.ObjectId,
       ref: "Supplier",
       required: true,
     },
+    items: { type: [orderItemSchema], required: true },
 
     /* ---------- Totals ---------- */
     totalAmount: { type: Number, required: true },
     totalCommission: { type: Number, default: 0 },
     totalEscrowHeld: { type: Number, default: 0 },
-    totalRefunded: { type: Number, default: 0 }, // 👈 NEW
+    totalRefunded: { type: Number, default: 0 },
+    totalSupplierEarnings: { type: Number, default: 0 },
 
     /* ---------- Shipping ---------- */
     shippingCost: { type: Number, min: 0, default: 0 },
@@ -114,7 +120,7 @@ const orderSchema = new Schema(
     /* ---------- Payment & Escrow ---------- */
     paymentMethod: {
       type: String,
-      enum: ["mpesa", "stripe", "paypal", "cod"],
+      enum: ["mpesa", "stripe", "paypal", "cod", "wallet"],
       required: true,
     },
     paymentStatus: {
@@ -122,11 +128,22 @@ const orderSchema = new Schema(
       enum: ["unpaid", "paid", "held", "released", "refunded", "partially_refunded"],
       default: "unpaid",
     },
+
     paymentReleaseStatus: {
       type: String,
       enum: ["Pending", "Scheduled", "Released", "OnHold"],
       default: "Pending",
     },
+
+    // ⬇️ Manual Escrow Control
+    releasedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null, // admin who manually released
+    },
+    releasedAt: { type: Date, default: null },
+    releaseNotes: { type: String, default: "" },
+
     transactionId: { type: String },
     paidAt: { type: Date },
     releaseDate: { type: Date },
@@ -163,23 +180,28 @@ orderSchema.pre("save", function (next) {
     this.deliveryDuration = Math.max(Math.round(diffInDays), 0);
   }
 
-  // Ensure totals are consistent
-  const computedTotal = this.items.reduce(
-    (sum, i) => sum + i.price * i.quantity,
-    0
-  );
-  if (this.totalAmount !== computedTotal) {
-    this.totalAmount = computedTotal;
-  }
+  // ✅ Compute commission, supplier earnings, and totals
+  let totalCommission = 0;
+  let totalSupplierEarnings = 0;
+
+  this.items.forEach((item) => {
+    const itemTotal = item.price * item.quantity;
+    item.platformFee = (item.commissionPercentage / 100) * itemTotal;
+    item.supplierEarnings = itemTotal - item.platformFee;
+
+    totalCommission += item.platformFee;
+    totalSupplierEarnings += item.supplierEarnings;
+  });
+
+  this.totalCommission = totalCommission;
+  this.totalSupplierEarnings = totalSupplierEarnings;
+  this.totalAmount = this.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  // Escrow balance (amount held until admin release)
+  this.totalEscrowHeld = this.totalAmount - this.totalCommission;
 
   // Calculate total refunded amount
-  this.totalRefunded = this.items.reduce(
-    (sum, i) => sum + (i.refundAmount || 0),
-    0
-  );
-
-  // Escrow balance
-  this.totalEscrowHeld = this.totalAmount - this.totalCommission;
+  this.totalRefunded = this.items.reduce((sum, i) => sum + (i.refundAmount || 0), 0);
 
   // Adjust order/payment status automatically
   if (this.totalRefunded > 0 && this.totalRefunded < this.totalAmount) {

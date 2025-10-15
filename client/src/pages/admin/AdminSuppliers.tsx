@@ -48,23 +48,30 @@ const AdminSuppliers: React.FC = () => {
     }
   };
 
-  const filteredSuppliers = suppliers.filter((supplier) =>
-    Object.values(supplier).some((value) =>
-      String(value).toLowerCase().includes(searchTerm.toLowerCase())
-    )
+  // ✅ Only show approved suppliers
+  const approvedSuppliers = suppliers.filter(
+    (supplier) =>
+      supplier.status === "Approved" &&
+      Object.values(supplier)
+        .join(" ")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="p-6">
       {/* Header and Search */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-3xl font-bold text-gray-800">Suppliers</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Approved Suppliers</h1>
         <div className="flex gap-4 w-full md:w-auto">
           <div className="relative flex-grow">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={18}
+            />
             <Input
               type="text"
-              placeholder="Search suppliers..."
+              placeholder="Search approved suppliers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -80,14 +87,16 @@ const AdminSuppliers: React.FC = () => {
       <Card className="shadow-lg">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-12 text-center text-gray-500">Loading suppliers...</div>
-          ) : filteredSuppliers.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
-              No suppliers found matching your criteria.
+              Loading approved suppliers...
+            </div>
+          ) : approvedSuppliers.length === 0 ? (
+            <div className="p-12 text-center text-gray-500">
+              No approved suppliers found.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-              {filteredSuppliers.map((supplier) => (
+              {approvedSuppliers.map((supplier) => (
                 <div
                   key={supplier._id}
                   className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-6 relative"
@@ -97,7 +106,7 @@ const AdminSuppliers: React.FC = () => {
                       className="text-lg font-semibold text-blue-600 hover:underline cursor-pointer"
                       onClick={() => setPreviewSupplier(supplier)}
                     >
-                      {supplier.fullName}
+                      {supplier.fullName || "Unnamed Supplier"}
                     </h3>
                     <div className="flex items-center gap-2">
                       <span
@@ -109,50 +118,33 @@ const AdminSuppliers: React.FC = () => {
                       >
                         {supplier.verified ? "Verified" : "Not Verified"}
                       </span>
-                      <span
-                        className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          supplier.status === "Approved"
-                            ? "bg-green-100 text-green-700"
-                            : supplier.status === "Pending"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {supplier.status}
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                        Approved
                       </span>
                     </div>
                   </div>
+
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p><strong>Company:</strong> {supplier.shopName}</p>
-                    <p><strong>Email:</strong> {supplier.user?.email || "N/A"}</p>
-                    <p><strong>Phone:</strong> {supplier.phoneNumber}</p>
-                    <p><strong>Business Type:</strong> {supplier.businessType}</p>
+                    <p>
+                      <strong>Company:</strong> {supplier.shopName || "—"}
+                    </p>
+                    <p>
+                      <strong>Email:</strong> {supplier.user?.email || "N/A"}
+                    </p>
+                    <p>
+                      <strong>Phone:</strong> {supplier.phoneNumber || "—"}
+                    </p>
+                    <p>
+                      <strong>Business Type:</strong> {supplier.businessType || "—"}
+                    </p>
                   </div>
 
                   <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap justify-end items-center gap-2">
-                    {supplier.status === "Pending" && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-600 hover:bg-green-50"
-                          onClick={() => handleStatusChange(supplier._id, "Approved")}
-                          disabled={loading}
-                        >
-                          <Check size={16} /> Approve
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50"
-                          onClick={() => handleStatusChange(supplier._id, "Rejected")}
-                          disabled={loading}
-                        >
-                          <X size={16} /> Reject
-                        </Button>
-                      </>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => setPreviewSupplier(supplier)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPreviewSupplier(supplier)}
+                    >
                       <Eye size={16} /> View
                     </Button>
                     <Button
@@ -228,18 +220,12 @@ const AdminSuppliers: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800">
                       {previewSupplier.fullName}
                     </h2>
-                    <p className="text-sm text-gray-500">{previewSupplier.shopName}</p>
+                    <p className="text-sm text-gray-500">
+                      {previewSupplier.shopName}
+                    </p>
                     <div className="mt-2 flex gap-2 items-center justify-center">
-                      <span
-                        className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          previewSupplier.status === "Approved"
-                            ? "bg-green-100 text-green-700"
-                            : previewSupplier.status === "Pending"
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {previewSupplier.status}
+                      <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                        Approved
                       </span>
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -260,10 +246,22 @@ const AdminSuppliers: React.FC = () => {
                         Account Info
                       </h3>
                       <div className="space-y-2 text-gray-600">
-                        <p><strong>Username:</strong> {previewSupplier.username}</p>
-                        <p><strong>Email:</strong> {previewSupplier.user?.email || "N/A"}</p>
-                        <p><strong>Phone:</strong> {previewSupplier.phoneNumber}</p>
-                        <p><strong>Seller Type:</strong> {previewSupplier.sellerType}</p>
+                        <p>
+                          <strong>Username:</strong>{" "}
+                          {previewSupplier.username || "—"}
+                        </p>
+                        <p>
+                          <strong>Email:</strong>{" "}
+                          {previewSupplier.user?.email || "N/A"}
+                        </p>
+                        <p>
+                          <strong>Phone:</strong>{" "}
+                          {previewSupplier.phoneNumber || "—"}
+                        </p>
+                        <p>
+                          <strong>Seller Type:</strong>{" "}
+                          {previewSupplier.sellerType || "—"}
+                        </p>
                       </div>
                     </div>
 
@@ -272,12 +270,27 @@ const AdminSuppliers: React.FC = () => {
                         Business Details
                       </h3>
                       <div className="space-y-2 text-gray-600">
-                        <p><strong>Shop Name:</strong> {previewSupplier.shopName}</p>
-                        <p><strong>Business Type:</strong> {previewSupplier.businessType}</p>
-                        <p><strong>Address:</strong> {previewSupplier.address}</p>
-                        <p><strong>ID Number:</strong> {previewSupplier.idNumber}</p>
+                        <p>
+                          <strong>Shop Name:</strong>{" "}
+                          {previewSupplier.shopName || "—"}
+                        </p>
+                        <p>
+                          <strong>Business Type:</strong>{" "}
+                          {previewSupplier.businessType || "—"}
+                        </p>
+                        <p>
+                          <strong>Address:</strong>{" "}
+                          {previewSupplier.address || "—"}
+                        </p>
+                        <p>
+                          <strong>ID Number:</strong>{" "}
+                          {previewSupplier.idNumber || "—"}
+                        </p>
                         {previewSupplier.taxNumber && (
-                          <p><strong>Tax Number:</strong> {previewSupplier.taxNumber}</p>
+                          <p>
+                            <strong>Tax Number:</strong>{" "}
+                            {previewSupplier.taxNumber}
+                          </p>
                         )}
                         {previewSupplier.businessLicense?.url && (
                           <p>
@@ -296,16 +309,27 @@ const AdminSuppliers: React.FC = () => {
                     </div>
                   </section>
 
+                  {/* Settlement Info */}
                   <section className="mt-6">
                     <h3 className="font-semibold text-lg text-gray-700 mb-3">
                       Settlement Info
                     </h3>
                     <div className="space-y-2 text-gray-600">
-                      <p><strong>Bank:</strong> {previewSupplier.bankName}</p>
-                      <p><strong>Account Name:</strong> {previewSupplier.accountName}</p>
-                      <p><strong>Account Number:</strong> {previewSupplier.accountNumber}</p>
+                      <p>
+                        <strong>Bank:</strong> {previewSupplier.bankName || "—"}
+                      </p>
+                      <p>
+                        <strong>Account Name:</strong>{" "}
+                        {previewSupplier.accountName || "—"}
+                      </p>
+                      <p>
+                        <strong>Account Number:</strong>{" "}
+                        {previewSupplier.accountNumber || "—"}
+                      </p>
                       {previewSupplier.branch && (
-                        <p><strong>Branch:</strong> {previewSupplier.branch}</p>
+                        <p>
+                          <strong>Branch:</strong> {previewSupplier.branch}
+                        </p>
                       )}
                     </div>
                   </section>

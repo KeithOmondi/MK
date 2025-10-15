@@ -10,38 +10,48 @@ import {
   selectSupplierSuccess,
 } from "../../redux/slices/supplierSlice";
 import { toast } from "react-toastify";
-import { FaCheckCircle, FaTimesCircle, FaUserClock, FaEye } from "react-icons/fa";
 import { motion } from "framer-motion";
 import { Dialog, Transition } from "@headlessui/react";
+import {
+  FaCheckCircle,
+  FaTimesCircle,
+  FaUserClock,
+  FaEye,
+} from "react-icons/fa";
 import Button from "../../components/ui/Button";
 
 const AdminSellerApplications: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
+
+  // Redux state
   const suppliers = useSelector(selectSuppliers);
   const loading = useSelector(selectSupplierLoading);
   const error = useSelector(selectSupplierError);
   const success = useSelector(selectSupplierSuccess);
 
+  // Local state
   const [previewSupplier, setPreviewSupplier] = useState<any>(null);
 
+  // Fetch suppliers on mount
   useEffect(() => {
     dispatch(fetchSuppliers());
   }, [dispatch]);
 
+  // Toast feedback
   useEffect(() => {
     if (success) toast.success(success);
     if (error) toast.error(error);
   }, [success, error]);
 
+  // Approve or reject a supplier
   const handleAction = (id: string, status: "Approved" | "Rejected") => {
     const formData = new FormData();
     formData.append("status", status);
     dispatch(updateSupplier({ id, formData }));
   };
 
-  const pendingSuppliers = suppliers.filter(
-    (s) => s.status === "Pending" && !s.verified
-  );
+  // Show all with status "Pending"
+  const pendingSuppliers = suppliers.filter((s) => s.status === "Pending");
 
   return (
     <div className="p-6">
@@ -49,6 +59,7 @@ const AdminSellerApplications: React.FC = () => {
         <FaUserClock className="text-indigo-600" /> Pending Seller Applications
       </h2>
 
+      {/* Loading or Empty State */}
       {loading ? (
         <p className="text-gray-600 animate-pulse">Loading applications...</p>
       ) : pendingSuppliers.length === 0 ? (
@@ -62,7 +73,9 @@ const AdminSellerApplications: React.FC = () => {
                 <th className="p-3 font-medium text-gray-600">Email</th>
                 <th className="p-3 font-medium text-gray-600">Shop Name</th>
                 <th className="p-3 font-medium text-gray-600">Status</th>
-                <th className="p-3 font-medium text-gray-600 text-center">Actions</th>
+                <th className="p-3 font-medium text-gray-600 text-center">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -76,13 +89,13 @@ const AdminSellerApplications: React.FC = () => {
                   <td className="p-3 flex items-center gap-3">
                     <img
                       src={supplier.idDocument?.url || "/default-avatar.png"}
-                      alt={supplier.fullName}
+                      alt={supplier.fullName || "Supplier"}
                       className="w-10 h-10 rounded-full object-cover border-2 border-gray-300"
                     />
                     <span>{supplier.fullName}</span>
                   </td>
                   <td className="p-3">{supplier.user?.email || "—"}</td>
-                  <td className="p-3">{supplier.shopName}</td>
+                  <td className="p-3">{supplier.shopName || "—"}</td>
                   <td className="p-3">
                     <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
                       Pending
@@ -123,7 +136,7 @@ const AdminSellerApplications: React.FC = () => {
         </div>
       )}
 
-      {/* Supplier Preview Modal */}
+      {/* Supplier Details Modal */}
       <Transition show={!!previewSupplier} as={Fragment}>
         <Dialog
           onClose={() => setPreviewSupplier(null)}
@@ -162,34 +175,18 @@ const AdminSellerApplications: React.FC = () => {
 
               {previewSupplier && (
                 <div className="p-6 overflow-y-auto space-y-6">
-                  {/* Summary & Status */}
+                  {/* Profile Section */}
                   <div className="flex items-center gap-4 pb-4 border-b">
-                    <div className="flex-shrink-0">
-                      {previewSupplier.idDocument?.url ? (
-                        <img
-                          src={previewSupplier.idDocument.url}
-                          alt="ID Document"
-                          className="w-20 h-20 object-cover rounded-full border-2 border-gray-300"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-xs text-center">
-                          No ID Doc
-                        </div>
-                      )}
-                    </div>
+                    <img
+                      src={previewSupplier.idDocument?.url || "/default-avatar.png"}
+                      alt="ID Document"
+                      className="w-20 h-20 object-cover rounded-full border-2 border-gray-300"
+                    />
                     <div>
                       <h2 className="text-xl font-bold">{previewSupplier.fullName}</h2>
                       <p className="text-sm text-gray-500">{previewSupplier.shopName}</p>
-                      <div className="mt-2 flex gap-2 items-center">
-                        <span
-                          className={`px-2 py-1 text-xs font-medium rounded-full ${
-                            previewSupplier.status === "Approved"
-                              ? "bg-green-100 text-green-700"
-                              : previewSupplier.status === "Pending"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
+                      <div className="mt-2 flex gap-2">
+                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">
                           {previewSupplier.status}
                         </span>
                         <span
@@ -205,38 +202,28 @@ const AdminSellerApplications: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Account & Business Info */}
+                  {/* Info Sections */}
                   <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <h3 className="font-semibold text-lg text-gray-700 mb-3">Account Info</h3>
+                      <h3 className="font-semibold text-lg text-gray-700 mb-3">
+                        Account Info
+                      </h3>
                       <div className="space-y-2 text-gray-600">
-                        <p>
-                          <strong>Email:</strong> {previewSupplier.user?.email}
-                        </p>
-                        <p>
-                          <strong>Phone:</strong> {previewSupplier.phoneNumber}
-                        </p>
-                        <p>
-                          <strong>Seller Type:</strong> {previewSupplier.businessType}
-                        </p>
+                        <p><strong>Email:</strong> {previewSupplier.user?.email || "—"}</p>
+                        <p><strong>Phone:</strong> {previewSupplier.phoneNumber || "—"}</p>
+                        <p><strong>Seller Type:</strong> {previewSupplier.businessType || "—"}</p>
                       </div>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-lg text-gray-700 mb-3">Business Details</h3>
+                      <h3 className="font-semibold text-lg text-gray-700 mb-3">
+                        Business Details
+                      </h3>
                       <div className="space-y-2 text-gray-600">
-                        <p>
-                          <strong>Shop Name:</strong> {previewSupplier.shopName}
-                        </p>
-                        <p>
-                          <strong>Address:</strong> {previewSupplier.address}
-                        </p>
-                        <p>
-                          <strong>ID Number:</strong> {previewSupplier.idNumber}
-                        </p>
+                        <p><strong>Shop Name:</strong> {previewSupplier.shopName || "—"}</p>
+                        <p><strong>Address:</strong> {previewSupplier.address || "—"}</p>
+                        <p><strong>ID Number:</strong> {previewSupplier.idNumber || "—"}</p>
                         {previewSupplier.taxNumber && (
-                          <p>
-                            <strong>Tax Number:</strong> {previewSupplier.taxNumber}
-                          </p>
+                          <p><strong>Tax Number:</strong> {previewSupplier.taxNumber}</p>
                         )}
                         {previewSupplier.businessLicense?.url && (
                           <p>
@@ -255,7 +242,7 @@ const AdminSellerApplications: React.FC = () => {
                     </div>
                   </section>
 
-                  {/* Approve / Reject buttons */}
+                  {/* Action Buttons */}
                   <div className="mt-6 flex justify-end gap-2">
                     <Button
                       variant="primary"

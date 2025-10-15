@@ -1,3 +1,7 @@
+/* =========================================================
+   ✅ Main Express App
+========================================================= */
+
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
@@ -6,7 +10,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// DB & Middleware
+// ✅ DB & Middleware Imports
 import { connectDB } from "./db/db.js";
 import { errorMiddleware } from "./middlewares/errorMiddlewares.js";
 import {
@@ -16,7 +20,7 @@ import {
 } from "./middlewares/rateLimiter.js";
 import { sanitizeMiddleware } from "./middlewares/sanitize.js";
 
-// Routes
+// ✅ Routes
 import authRouter from "./routes/authRouter.js";
 import userRouter from "./routes/userRouter.js";
 import productRouter from "./routes/productRouter.js";
@@ -31,19 +35,22 @@ import reviewRouter from "./routes/reviewRouter.js";
 import adminRouter from "./routes/adminRouter.js";
 import addressRouter from "./routes/addressRouter.js";
 import offersRouter from "./routes/offersRouter.js";
-import reportRouter from "./routes/reportRouter.js"
-import disputeRouter from "./routes/disputeRouter.js"
-import couponRouter from "./routes/couponRouter.js"
-import walletRouter from "./routes/walletRouter.js"
-import fileUpload from "express-fileupload";
+import reportRouter from "./routes/reportRouter.js";
+import disputeRouter from "./routes/disputeRouter.js";
+import couponRouter from "./routes/couponRouter.js";
+import walletRouter from "./routes/walletRouter.js";
 
 dotenv.config({ path: "./config/.env" });
 
+/* =========================================================
+   ✅ Express App Setup
+========================================================= */
 const app = express();
-// Apply to all routes
+
+// ✅ Apply Global Rate Limiter
 app.use(globalLimiter);
 
-// ✅ Security & middlewares
+// ✅ Core Security & Middleware
 app.use(helmet());
 app.use(
   cors({
@@ -52,33 +59,40 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// ✅ Body Parsers
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
-// ✅ Serve uploads
+// ✅ Path Setup
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use(
-  fileUpload({
-    useTempFiles: true,
-    tempFileDir: "/tmp/",
-  })
-);
 
-// ✅ Debug logger
+// ✅ Static File Serving (for uploads)
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* =========================================================
+   🚫 Removed express-fileupload (conflicts with multer)
+========================================================= */
+// ❌ app.use(fileUpload(...)) — removed to prevent "Unexpected end of form"
+
+/* =========================================================
+   🪵 Request Debug Logger
+========================================================= */
 app.use((req, res, next) => {
-  console.log("📥 Incoming request:", req.originalUrl, req.body);
+  console.log("📥 Incoming request:", req.method, req.originalUrl);
   next();
 });
 
-// ✅ Apply sanitizer globally
-sanitizeMiddleware(app);  
+/* =========================================================
+   🧼 Sanitize Middleware
+========================================================= */
+sanitizeMiddleware(app);
 
-
-
-// ✅ Routes
+/* =========================================================
+   ✅ API Routes
+========================================================= */
 app.use("/api/v1/auth", authRouter, limiter, loginLimiter);
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/products", productRouter);
@@ -98,11 +112,17 @@ app.use("/api/v1/disputes", disputeRouter);
 app.use("/api/v1/coupons", couponRouter);
 app.use("/api/v1/wallet", walletRouter);
 
-// ✅ Global error handler
+/* =========================================================
+   ⚠️ Global Error Handler
+========================================================= */
 app.use(errorMiddleware);
 
-// ✅ DB connection
+/* =========================================================
+   🔗 Database Connection
+========================================================= */
 connectDB();
 
-// Export only the app
+/* =========================================================
+   🚀 Export App
+========================================================= */
 export default app;
